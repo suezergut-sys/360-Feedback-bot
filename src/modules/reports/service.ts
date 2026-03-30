@@ -30,6 +30,70 @@ const REPORT_SYSTEM_PROMPT = [
   "Соблюдай нейтральный тон и опирайся только на входные данные.",
 ].join("\n");
 
+function fallbackExtraction(competencyName: string, transcript: string) {
+  const lines = transcript
+    .split("\n")
+    .map((line) => line.replace(/^-+\s*/, "").trim())
+    .filter(Boolean);
+
+  const evidence = lines.slice(0, 5);
+
+  return {
+    competency_name: competencyName,
+    evidence: evidence.length > 0 ? evidence : ["Недостаточно данных для уверенного вывода."],
+    strengths: evidence.length > 0 ? [evidence[0]] : [],
+    growth_areas: evidence.length > 1 ? [evidence[evidence.length - 1]] : [],
+    examples: evidence.slice(0, 2),
+    specificity: "low" as const,
+    confidence: 0.35,
+  };
+}
+
+function fallbackCompetencyReport(aggregate: {
+  competencyName: string;
+  strengths: string[];
+  growthAreas: string[];
+  evidence: string[];
+  examples: string[];
+  averageConfidence: number;
+  respondentCount: number;
+}) {
+  return {
+    competency_name: aggregate.competencyName,
+    short_summary: `Собрано ${aggregate.respondentCount} источников обратной связи по компетенции "${aggregate.competencyName}".`,
+    strengths: aggregate.strengths.slice(0, 5),
+    growth_areas: aggregate.growthAreas.slice(0, 5),
+    behavior_patterns: aggregate.evidence.slice(0, 6),
+    examples: aggregate.examples.slice(0, 5),
+    conflicting_signals: [],
+    recommendations: [
+      "Продолжить сбор наблюдений для повышения достоверности.",
+      "Проверить динамику по компетенции на следующем цикле 360.",
+    ],
+    data_completeness: aggregate.respondentCount >= 3 ? ("medium" as const) : ("low" as const),
+    confidence_level: Math.max(0.3, aggregate.averageConfidence || 0.3),
+  };
+}
+
+function fallbackOverallReport(aggregates: Array<ReturnType<typeof assembleCompetencyAggregate>>) {
+  const topStrengths = aggregates.flatMap((item) => item.strengths).slice(0, 7);
+  const topGrowth = aggregates.flatMap((item) => item.growthAreas).slice(0, 7);
+  const themes = aggregates.flatMap((item) => item.evidence).slice(0, 8);
+
+  return {
+    executive_summary: "Отчет сформирован на основе текущего объема качественной обратной связи.",
+    key_strengths: topStrengths.length > 0 ? topStrengths : ["Недостаточно данных"],
+    key_development_areas: topGrowth.length > 0 ? topGrowth : ["Недостаточно данных"],
+    repeated_themes: themes.length > 0 ? themes : ["Повторяющиеся темы пока не выявлены"],
+    blind_spots: ["Часть компетенций может требовать дополнительного сбора примеров."],
+    near_term_recommendations: [
+      "Провести follow-up беседы по ключевым зонам роста.",
+      "Повторить цикл 360 после внедрения изменений.",
+    ],
+    confidence_level: 0.45,
+  };
+}
+
 async function getNextReportVersion(campaignId: string, reportType: ReportType, competencyId?: string | null) {
   const latest = await prisma.analysisReport.findFirst({
     where: {
@@ -81,10 +145,15 @@ export async function runExtractionForRespondent(campaignId: string, respondentI
       .map((message) => `- ${message.transcriptText ?? message.rawText ?? ""}`)
       .join("\n");
 
-    const extracted = await extractCompetencyFeedback({
-      systemPrompt: EXTRACTION_SYSTEM_PROMPT,
-      userPrompt: buildExtractionPrompt(competency, transcript),
-    });
+    let extracted;
+    try {
+      extracted = await extractCompetencyFeedback({
+        systemPrompt: EXTRACTION_SYSTEM_PROMPT,
+        userPrompt: buildExtractionPrompt(competency, transcript),
+      });
+    } catch {
+      extracted = fallbackExtraction(competency.name, transcript);
+    }
 
     await prisma.competencyFeedback.upsert({
       where: {
@@ -147,10 +216,15 @@ export async function generateReportsForCampaign(campaignId: string): Promise<vo
   );
 
   for (const aggregate of aggregates) {
-    const competencyReport = await generateCompetencyReport({
-      systemPrompt: REPORT_SYSTEM_PROMPT,
-      userPrompt: buildCompetencyReportPrompt(aggregate.competencyName, JSON.stringify(aggregate)),
-    });
+    let competencyReport;
+    try {
+      competencyReport = await generateCompetencyReport({
+        systemPrompt: REPORT_SYSTEM_PROMPT,
+        userPrompt: buildCompetencyReportPrompt(aggregate.competencyName, JSON.stringify(aggregate)),
+      });
+    } catch {
+      competencyReport = fallbackCompetencyReport(aggregate);
+    }
 
     const version = await getNextReportVersion(campaignId, ReportType.competency, aggregate.competencyId);
 
@@ -167,10 +241,15 @@ export async function generateReportsForCampaign(campaignId: string): Promise<vo
   }
 
   const overallInput = assembleOverallThemes(aggregates);
-  const overallReport = await generateOverallReport({
-    systemPrompt: REPORT_SYSTEM_PROMPT,
-    userPrompt: buildOverallReportPrompt(JSON.stringify(overallInput)),
-  });
+  let overallReport;
+  try {
+    overallReport = await generateOverallReport({
+      systemPrompt: REPORT_SYSTEM_PROMPT,
+      userPrompt: buildOverallReportPrompt(JSON.stringify(overallInput)),
+    });
+  } catch {
+    overallReport = fallbackOverallReport(aggregates);
+  }
 
   const overallVersion = await getNextReportVersion(campaignId, ReportType.overall, null);
 
