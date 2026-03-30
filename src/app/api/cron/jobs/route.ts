@@ -11,11 +11,19 @@ function isCronAuthorized(request: Request) {
   return auth === expected;
 }
 
-export async function POST(request: Request) {
+async function handleCronRun(request: Request) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
   const result = await processDueJobs(15);
   return NextResponse.json({ ok: true, ...result });
+}
+
+export async function POST(request: Request) {
+  return handleCronRun(request);
+}
+
+export async function GET(request: Request) {
+  return handleCronRun(request);
 }
