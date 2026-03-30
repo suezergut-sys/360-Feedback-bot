@@ -5,6 +5,9 @@ type BuildInterviewPromptInput = {
   subjectName: string;
   competency: Pick<Competency, "name" | "description">;
   step: string;
+  marker?: string | null;
+  markerQuestionCount: number;
+  markerQuestionLimit: number;
 };
 
 export function buildInterviewSystemPrompt(input: BuildInterviewPromptInput): string {
@@ -19,6 +22,9 @@ export function buildInterviewSystemPrompt(input: BuildInterviewPromptInput): st
     `Текущая компетенция: ${input.competency.name}`,
     `Описание компетенции: ${input.competency.description}`,
     `Текущий этап методики: ${input.step}`,
+    `Текущий behavioral marker: ${input.marker ?? "не задан"}`,
+    `Вопросов по текущему marker уже задано: ${input.markerQuestionCount} из ${input.markerQuestionLimit}`,
+    "Если лимит по marker достигнут, переходи к следующему marker и не повторяй один и тот же вопрос.",
     "Если ответ респондента расплывчатый, попроси конкретный пример (ситуация, действие, результат).",
     "Не делай итоговых выводов, пока интервью не завершено.",
   ].join("\n");

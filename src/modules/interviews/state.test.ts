@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialInterviewState,
   getCurrentStep,
+  incrementMarkerQuestionCount,
   isRepeatedQuestion,
   looksLikeConsent,
+  moveToNextMarker,
   moveToNextCompetency,
   moveToNextMethodologyStep,
   normalizeQuestionText,
+  resetMarkerProgress,
   withInterviewCompleted,
 } from "@/modules/interviews/state";
 
@@ -15,6 +18,8 @@ describe("interview state transitions", () => {
     const state = createInitialInterviewState();
     expect(state.phase).toBe("consent");
     expect(getCurrentStep(state)).toBe("opening");
+    expect(state.markerIndex).toBe(0);
+    expect(state.markerQuestionCount).toBe(0);
   });
 
   it("advances methodology and competency", () => {
@@ -30,9 +35,39 @@ describe("interview state transitions", () => {
   });
 
   it("supports explicit competency switch", () => {
-    const next = moveToNextCompetency(createInitialInterviewState());
+    const next = moveToNextCompetency({
+      ...createInitialInterviewState(),
+      markerIndex: 2,
+      markerQuestionCount: 3,
+    });
     expect(next.competencyIndex).toBe(1);
     expect(next.stepIndex).toBe(0);
+    expect(next.markerIndex).toBe(0);
+    expect(next.markerQuestionCount).toBe(0);
+  });
+
+  it("supports marker transitions", () => {
+    const state = createInitialInterviewState();
+    const movedMarker = moveToNextMarker({
+      ...state,
+      markerQuestionCount: 2,
+      stepIndex: 3,
+    });
+
+    expect(movedMarker.markerIndex).toBe(1);
+    expect(movedMarker.markerQuestionCount).toBe(0);
+    expect(movedMarker.stepIndex).toBe(0);
+
+    const incremented = incrementMarkerQuestionCount(movedMarker);
+    expect(incremented.markerQuestionCount).toBe(1);
+
+    const reset = resetMarkerProgress({
+      ...incremented,
+      markerIndex: 5,
+      markerQuestionCount: 9,
+    });
+    expect(reset.markerIndex).toBe(0);
+    expect(reset.markerQuestionCount).toBe(0);
   });
 
   it("detects consent in russian", () => {

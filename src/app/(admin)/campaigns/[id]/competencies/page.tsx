@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { CampaignTabs } from "@/components/campaign-tabs";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
-import { createCompetencyAction, toggleCompetencyAction } from "@/app/(admin)/campaigns/actions";
+import { createCompetencyAction, toggleCompetencyAction, updateCompetencyAction } from "@/app/(admin)/campaigns/actions";
 
 function markersToString(markers: unknown): string {
   if (!Array.isArray(markers)) {
@@ -10,6 +10,14 @@ function markersToString(markers: unknown): string {
   }
 
   return markers.map((item) => String(item)).join(", ");
+}
+
+function markersToMultiline(markers: unknown): string {
+  if (!Array.isArray(markers)) {
+    return "";
+  }
+
+  return markers.map((item) => String(item)).join("\n");
 }
 
 export default async function CampaignCompetenciesPage({
@@ -62,14 +70,89 @@ export default async function CampaignCompetenciesPage({
                 <td>{markersToString(competency.behavioralMarkers)}</td>
                 <td>{competency.enabled ? "Да" : "Нет"}</td>
                 <td>
-                  <form action={toggleCompetencyAction}>
-                    <input type="hidden" name="campaignId" value={campaign.id} />
-                    <input type="hidden" name="competencyId" value={competency.id} />
-                    <input type="hidden" name="enabled" value={competency.enabled ? "false" : "true"} />
-                    <button type="submit" className="button small">
-                      {competency.enabled ? "Disable" : "Enable"}
-                    </button>
-                  </form>
+                  <div className="stack-sm">
+                    <form action={toggleCompetencyAction}>
+                      <input type="hidden" name="campaignId" value={campaign.id} />
+                      <input type="hidden" name="competencyId" value={competency.id} />
+                      <input type="hidden" name="enabled" value={competency.enabled ? "false" : "true"} />
+                      <button type="submit" className="button small">
+                        {competency.enabled ? "Disable" : "Enable"}
+                      </button>
+                    </form>
+
+                    <details>
+                      <summary>Редактировать</summary>
+                      <form action={updateCompetencyAction} className="form-grid" style={{ marginTop: "0.5rem" }}>
+                        <input type="hidden" name="campaignId" value={campaign.id} />
+                        <input type="hidden" name="competencyId" value={competency.id} />
+
+                        <label className="form-label" htmlFor={`name-${competency.id}`}>
+                          Название
+                        </label>
+                        <input
+                          id={`name-${competency.id}`}
+                          name="name"
+                          className="input"
+                          defaultValue={competency.name}
+                          required
+                        />
+
+                        <label className="form-label" htmlFor={`description-${competency.id}`}>
+                          Описание
+                        </label>
+                        <textarea
+                          id={`description-${competency.id}`}
+                          name="description"
+                          className="textarea"
+                          rows={3}
+                          defaultValue={competency.description}
+                          required
+                        />
+
+                        <label className="form-label" htmlFor={`markers-${competency.id}`}>
+                          Behavioral markers
+                        </label>
+                        <textarea
+                          id={`markers-${competency.id}`}
+                          name="behavioralMarkers"
+                          className="textarea"
+                          rows={3}
+                          defaultValue={markersToMultiline(competency.behavioralMarkers)}
+                          required
+                        />
+
+                        <label className="form-label" htmlFor={`order-${competency.id}`}>
+                          Порядок
+                        </label>
+                        <input
+                          id={`order-${competency.id}`}
+                          name="priorityOrder"
+                          type="number"
+                          className="input"
+                          min={1}
+                          defaultValue={competency.priorityOrder}
+                          required
+                        />
+
+                        <label className="form-label" htmlFor={`enabled-${competency.id}`}>
+                          Статус
+                        </label>
+                        <select
+                          id={`enabled-${competency.id}`}
+                          name="enabled"
+                          className="input"
+                          defaultValue={competency.enabled ? "true" : "false"}
+                        >
+                          <option value="true">Включено</option>
+                          <option value="false">Выключено</option>
+                        </select>
+
+                        <button type="submit" className="button primary small">
+                          Сохранить
+                        </button>
+                      </form>
+                    </details>
+                  </div>
                 </td>
               </tr>
             ))}

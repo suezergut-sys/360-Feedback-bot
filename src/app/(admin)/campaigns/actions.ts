@@ -112,6 +112,39 @@ export async function createCompetencyAction(formData: FormData) {
   revalidatePath(`/campaigns/${campaignId}/competencies`);
 }
 
+export async function updateCompetencyAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const campaignId = String(formData.get("campaignId") ?? "");
+  const competencyId = String(formData.get("competencyId") ?? "");
+
+  const payload = competencyInputSchema.parse({
+    name: String(formData.get("name") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    behavioralMarkers: parseBehavioralMarkers(String(formData.get("behavioralMarkers") ?? "")),
+    priorityOrder: Number(formData.get("priorityOrder") ?? 1),
+    enabled: String(formData.get("enabled") ?? "true") === "true",
+  });
+
+  await prisma.competency.updateMany({
+    where: {
+      id: competencyId,
+      campaignId,
+      campaign: {
+        ownerAdminId: admin.id,
+      },
+    },
+    data: {
+      name: payload.name,
+      description: payload.description,
+      behavioralMarkers: payload.behavioralMarkers,
+      priorityOrder: payload.priorityOrder,
+      enabled: payload.enabled,
+    },
+  });
+
+  revalidatePath(`/campaigns/${campaignId}/competencies`);
+}
+
 export async function toggleCompetencyAction(formData: FormData) {
   const admin = await requireAdminSession();
   const campaignId = String(formData.get("campaignId") ?? "");

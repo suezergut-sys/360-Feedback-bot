@@ -13,14 +13,18 @@ import { logger } from "@/lib/logging/logger";
 import { buildInterviewSystemPrompt } from "@/prompts/interview";
 import { generateInterviewDecision } from "@/lib/openai/service";
 import {
+  MAX_QUESTIONS_PER_MARKER,
   buildFallbackQuestion,
   createInitialInterviewState,
   getCurrentStep,
+  incrementMarkerQuestionCount,
   isRepeatedQuestion,
   looksLikeConsent,
   moveToNextCompetency,
+  moveToNextMarker,
   moveToNextMethodologyStep,
   parseInterviewState,
+  resetMarkerProgress,
   withInterviewCompleted,
   withInterviewStarted,
   type InterviewState,
@@ -194,6 +198,55 @@ function getCurrentCompetency(state: InterviewState, competencies: Competency[])
   return competencies[state.competencyIndex] ?? null;
 }
 
+function getBehavioralMarkers(competency: Competency): string[] {
+  if (!Array.isArray(competency.behavioralMarkers)) {
+    return [];
+  }
+
+  return competency.behavioralMarkers.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function getCurrentMarker(state: InterviewState, competency: Competency): string | null {
+  const markers = getBehavioralMarkers(competency);
+
+  if (!markers.length) {
+    return null;
+  }
+
+  return markers[state.markerIndex] ?? null;
+}
+
+function normalizeMarkerState(state: InterviewState, competency: Competency): InterviewState {
+  const markers = getBehavioralMarkers(competency);
+
+  if (!markers.length) {
+    return resetMarkerProgress(state);
+  }
+
+  if (state.markerIndex >= markers.length) {
+    return {
+      ...state,
+      markerIndex: 0,
+      markerQuestionCount: 0,
+    };
+  }
+
+  return state;
+}
+
+function moveToNextMarkerOrCompetency(state: InterviewState, competency: Competency): InterviewState {
+  const markers = getBehavioralMarkers(competency);
+  if (!markers.length) {
+    return moveToNextCompetency(state);
+  }
+
+  if (state.markerIndex + 1 < markers.length) {
+    return moveToNextMarker(state);
+  }
+
+  return moveToNextCompetency(state);
+}
+
 async function finalizeInterview(context: ActiveCampaignContext, sessionId: string, state: InterviewState) {
   const completedState = withInterviewCompleted(state);
 
@@ -244,13 +297,36 @@ async function askNextQuestion(params: {
   state: InterviewState;
   telegramChatId: number;
 }): Promise<string> {
-  const currentCompetency = getCurrentCompetency(params.state, params.context.competencies);
+  let workingState = params.state;
+  let currentCompetency = getCurrentCompetency(workingState, params.context.competencies);
 
   if (!currentCompetency) {
-    return finalizeInterview(params.context, params.sessionId, params.state);
+    return finalizeInterview(params.context, params.sessionId, workingState);
   }
 
-  const step = getCurrentStep(params.state);
+  workingState = normalizeMarkerState(workingState, currentCompetency);
+
+  if (workingState.markerQuestionCount >= MAX_QUESTIONS_PER_MARKER) {
+    const previousMarker = getCurrentMarker(workingState, currentCompetency);
+    workingState = moveToNextMarkerOrCompetency(workingState, currentCompetency);
+    currentCompetency = getCurrentCompetency(workingState, params.context.competencies);
+
+    if (!currentCompetency) {
+      return finalizeInterview(params.context, params.sessionId, workingState);
+    }
+
+    workingState = normalizeMarkerState(workingState, currentCompetency);
+
+    logger.info("Marker question limit reached, switching focus", {
+      sessionId: params.sessionId,
+      previousMarker,
+      competencyId: currentCompetency.id,
+      markerIndex: workingState.markerIndex,
+    });
+  }
+
+  const step = getCurrentStep(workingState);
+  const marker = getCurrentMarker(workingState, currentCompetency);
   const history = await getSessionHistory(params.sessionId);
 
   const systemPrompt = buildInterviewSystemPrompt({
@@ -258,6 +334,9 @@ async function askNextQuestion(params: {
     subjectName: params.context.campaign.subjectName,
     competency: currentCompetency,
     step,
+    marker,
+    markerQuestionCount: workingState.markerQuestionCount,
+    markerQuestionLimit: MAX_QUESTIONS_PER_MARKER,
   });
 
   const decision = await generateInterviewDecision({
@@ -265,7 +344,7 @@ async function askNextQuestion(params: {
     history,
   });
 
-  let nextState = params.state;
+  let nextState = workingState;
 
   if (decision.finish_interview) {
     return finalizeInterview(params.context, params.sessionId, nextState);
@@ -283,12 +362,16 @@ async function askNextQuestion(params: {
     return finalizeInterview(params.context, params.sessionId, nextState);
   }
 
+  nextState = normalizeMarkerState(nextState, nextCompetency);
+  let nextMarker = getCurrentMarker(nextState, nextCompetency);
   let nextStep = getCurrentStep(nextState);
-  let question = decision.next_question?.trim() || buildFallbackQuestion(nextCompetency.name, nextStep);
+  let question = decision.next_question?.trim() || buildFallbackQuestion(nextCompetency.name, nextStep, nextMarker);
 
-  if (isRepeatedQuestion(params.state.lastQuestion, question)) {
+  if (isRepeatedQuestion(workingState.lastQuestion, question)) {
     const stateMovedByModel =
-      nextState.competencyIndex !== params.state.competencyIndex || nextState.stepIndex !== params.state.stepIndex;
+      nextState.competencyIndex !== workingState.competencyIndex ||
+      nextState.stepIndex !== workingState.stepIndex ||
+      nextState.markerIndex !== workingState.markerIndex;
 
     if (!stateMovedByModel) {
       nextState = moveToNextMethodologyStep(nextState);
@@ -299,24 +382,32 @@ async function askNextQuestion(params: {
       }
 
       nextCompetency = forcedCompetency;
+      nextState = normalizeMarkerState(nextState, forcedCompetency);
+      nextMarker = getCurrentMarker(nextState, forcedCompetency);
       nextStep = getCurrentStep(nextState);
-      question = buildFallbackQuestion(forcedCompetency.name, nextStep);
+      question = buildFallbackQuestion(forcedCompetency.name, nextStep, nextMarker);
 
       logger.warn("Interview loop prevention: forced methodology step advance", {
         sessionId: params.sessionId,
-        previousQuestion: params.state.lastQuestion,
+        previousQuestion: workingState.lastQuestion,
         repeatedQuestion: decision.next_question,
       });
     } else {
-      question = buildFallbackQuestion(nextCompetency.name, nextStep);
+      question = buildFallbackQuestion(nextCompetency.name, nextStep, nextMarker);
     }
   }
 
-  const storedState: InterviewState = {
+  let storedState: InterviewState = {
     ...nextState,
     phase: "interview",
     lastQuestion: question,
   };
+
+  if (nextMarker) {
+    storedState = incrementMarkerQuestionCount(storedState);
+  } else {
+    storedState = resetMarkerProgress(storedState);
+  }
 
   await setSessionState({
     sessionId: params.sessionId,
@@ -420,7 +511,8 @@ export async function handleResumeCommand(telegramUserId: bigint, chatId: number
 
   const competency = getCurrentCompetency(state, context.competencies);
   const step = getCurrentStep(state);
-  const fallbackQuestion = competency ? buildFallbackQuestion(competency.name, step) : "Продолжим интервью.";
+  const marker = competency ? getCurrentMarker(state, competency) : null;
+  const fallbackQuestion = competency ? buildFallbackQuestion(competency.name, step, marker) : "Продолжим интервью.";
   const resumeQuestion = state.lastQuestion ?? fallbackQuestion;
 
   await buildAndStoreAssistantQuestion({
@@ -506,12 +598,14 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<st
       return finalizeInterview(context, session.id, startedState);
     }
 
-    const firstQuestion = buildFallbackQuestion(firstCompetency.name, "opening");
+    const firstMarker = getCurrentMarker(startedState, firstCompetency);
+    const firstQuestion = buildFallbackQuestion(firstCompetency.name, "opening", firstMarker);
+    const startedWithQuestionCount = firstMarker ? incrementMarkerQuestionCount(startedState) : startedState;
 
     await setSessionState({
       sessionId: session.id,
       state: {
-        ...startedState,
+        ...startedWithQuestionCount,
         lastQuestion: firstQuestion,
       },
       currentCompetencyId: firstCompetency.id,
