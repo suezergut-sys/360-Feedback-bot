@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  completed
+  archived
+}
+
+enum RespondentStatus {
+  invited
+  started
+  completed
+}
+
+enum SenderType {
+  respondent
+  assistant
+  system
+}
+
+enum MessageType {
+  text
+  voice
+  system
+}
+
+enum ReportType {
+  overall
+  competency
+}
+
+enum JobStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+model Admin {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String     @map("password_hash")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  campaigns    Campaign[]
+
+  @@map("admins")
+}
+
+model Campaign {
+  id             String             @id @default(cuid())
+  ownerAdminId   String             @map("owner_admin_id")
+  title          String
+  description    String
+  subjectName    String             @map("subject_name")
+  status         CampaignStatus     @default(draft)
+  language       String             @default("ru")
+  welcomeMessage String             @map("welcome_message")
+  closingMessage String             @map("closing_message")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  owner          Admin              @relation(fields: [ownerAdminId], references: [id], onDelete: Cascade)
+  competencies   Competency[]
+  respondents    Respondent[]
+  sessions       InterviewSession[]
+  feedback       CompetencyFeedback[]
+  reports        AnalysisReport[]
+
+  @@index([ownerAdminId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model Competency {
+  id                  String               @id @default(cuid())
+  campaignId          String               @map("campaign_id")
+  name                String
+  description         String
+  behavioralMarkers   Json                 @map("behavioral_markers_json")
+  priorityOrder       Int                  @map("priority_order")
+  enabled             Boolean              @default(true)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  campaign            Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  feedback            CompetencyFeedback[]
+  reports             AnalysisReport[]
+  currentInSessions   InterviewSession[]   @relation("CurrentCompetency")
+  messages            Message[]
+
+  @@index([campaignId, priorityOrder])
+  @@map("competencies")
+}
+
+model Respondent {
+  id               String            @id @default(cuid())
+  campaignId       String            @map("campaign_id")
+  telegramUserId   BigInt?           @map("telegram_user_id")
+  telegramUsername String?           @map("telegram_username")
+  displayName      String?           @map("display_name")
+  inviteToken      String            @unique @map("invite_token")
+  status           RespondentStatus  @default(invited)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  campaign         Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sessions         InterviewSession[]
+  feedback         CompetencyFeedback[]
+
+  @@index([campaignId, status])
+  @@index([telegramUserId])
+  @@map("respondents")
+}
+
+model InterviewSession {
+  id                  String      @id @default(cuid())
+  campaignId          String      @map("campaign_id")
+  respondentId        String      @map("respondent_id")
+  currentState        Json        @map("current_state")
+  currentCompetencyId String?     @map("current_competency_id")
+  startedAt           DateTime    @default(now()) @map("started_at")
+  lastActivityAt      DateTime    @default(now()) @map("last_activity_at")
+  completedAt         DateTime?   @map("completed_at")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  campaign            Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  respondent          Respondent  @relation(fields: [respondentId], references: [id], onDelete: Cascade)
+  currentCompetency   Competency? @relation("CurrentCompetency", fields: [currentCompetencyId], references: [id])
+  messages            Message[]
+
+  @@unique([campaignId, respondentId])
+  @@index([campaignId, completedAt])
+  @@map("interview_sessions")
+}
+
+model Message {
+  id                String      @id @default(cuid())
+  sessionId         String      @map("session_id")
+  competencyId      String?     @map("competency_id")
+  senderType        SenderType  @map("sender_type")
+  telegramMessageId Int?        @map("telegram_message_id")
+  messageType       MessageType @map("message_type")
+  rawText           String?     @map("raw_text")
+  transcriptText    String?     @map("transcript_text")
+  normalizedText    String?     @map("normalized_text")
+  metadata          Json?
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  session           InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  competency        Competency?      @relation(fields: [competencyId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([telegramMessageId])
+  @@map("messages")
+}
+
+model CompetencyFeedback {
+  id                  String    @id @default(cuid())
+  campaignId          String    @map("campaign_id")
+  respondentId        String    @map("respondent_id")
+  competencyId        String    @map("competency_id")
+  evidenceSummary     String    @map("evidence_summary")
+  strengthsText       String    @map("strengths_text")
+  growthAreasText     String    @map("growth_areas_text")
+  examplesText        String    @map("examples_text")
+  confidenceScore     Float     @map("confidence_score")
+  sourceMessageIds    Json      @map("source_message_ids_json")
+  payloadJson         Json      @default("{}") @map("payload_json")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  campaign            Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  respondent          Respondent @relation(fields: [respondentId], references: [id], onDelete: Cascade)
+  competency          Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, respondentId, competencyId])
+  @@index([campaignId, competencyId])
+  @@map("competency_feedback")
+}
+
+model AnalysisReport {
+  id              String     @id @default(cuid())
+  campaignId      String     @map("campaign_id")
+  reportType      ReportType @map("report_type")
+  competencyId    String?    @map("competency_id")
+  contentMarkdown String     @map("content_markdown")
+  contentJson     Json       @map("content_json")
+  version         Int        @default(1)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  campaign        Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  competency      Competency? @relation(fields: [competencyId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, reportType, createdAt])
+  @@map("analysis_reports")
+}
+
+model Job {
+  id         String    @id @default(cuid())
+  type       String
+  payloadJson Json     @map("payload_json")
+  status     JobStatus @default(pending)
+  attempts   Int       @default(0)
+  runAt      DateTime  @default(now()) @map("run_at")
+  lastError  String?   @map("last_error")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, runAt])
+  @@map("jobs")
+}
+
+model TelegramUpdateLog {
+  id        String   @id @default(cuid())
+  updateId  BigInt   @unique @map("update_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("telegram_update_logs")
+}
