@@ -16,6 +16,7 @@ import {
   buildFallbackQuestion,
   createInitialInterviewState,
   getCurrentStep,
+  isRepeatedQuestion,
   looksLikeConsent,
   moveToNextCompetency,
   moveToNextMethodologyStep,
@@ -276,14 +277,40 @@ async function askNextQuestion(params: {
     nextState = moveToNextMethodologyStep(nextState);
   }
 
-  const nextCompetency = getCurrentCompetency(nextState, params.context.competencies);
+  let nextCompetency = getCurrentCompetency(nextState, params.context.competencies);
 
   if (!nextCompetency) {
     return finalizeInterview(params.context, params.sessionId, nextState);
   }
 
-  const nextStep = getCurrentStep(nextState);
-  const question = decision.next_question?.trim() || buildFallbackQuestion(nextCompetency.name, nextStep);
+  let nextStep = getCurrentStep(nextState);
+  let question = decision.next_question?.trim() || buildFallbackQuestion(nextCompetency.name, nextStep);
+
+  if (isRepeatedQuestion(params.state.lastQuestion, question)) {
+    const stateMovedByModel =
+      nextState.competencyIndex !== params.state.competencyIndex || nextState.stepIndex !== params.state.stepIndex;
+
+    if (!stateMovedByModel) {
+      nextState = moveToNextMethodologyStep(nextState);
+      const forcedCompetency = getCurrentCompetency(nextState, params.context.competencies);
+
+      if (!forcedCompetency) {
+        return finalizeInterview(params.context, params.sessionId, nextState);
+      }
+
+      nextCompetency = forcedCompetency;
+      nextStep = getCurrentStep(nextState);
+      question = buildFallbackQuestion(forcedCompetency.name, nextStep);
+
+      logger.warn("Interview loop prevention: forced methodology step advance", {
+        sessionId: params.sessionId,
+        previousQuestion: params.state.lastQuestion,
+        repeatedQuestion: decision.next_question,
+      });
+    } else {
+      question = buildFallbackQuestion(nextCompetency.name, nextStep);
+    }
+  }
 
   const storedState: InterviewState = {
     ...nextState,

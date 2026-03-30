@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialInterviewState,
   getCurrentStep,
+  isRepeatedQuestion,
   looksLikeConsent,
   moveToNextCompetency,
   moveToNextMethodologyStep,
+  normalizeQuestionText,
   withInterviewCompleted,
 } from "@/modules/interviews/state";
 
@@ -42,5 +44,20 @@ describe("interview state transitions", () => {
     const completed = withInterviewCompleted(createInitialInterviewState());
     expect(completed.phase).toBe("completed");
     expect(completed.completed).toBe(true);
+  });
+
+  it("normalizes and detects repeated questions", () => {
+    expect(
+      normalizeQuestionText("Какой вопрос Сумин задал, который был особенно эффективным?"),
+    ).toBe("какой вопрос сумин задал который был особенно эффективным");
+
+    expect(
+      isRepeatedQuestion(
+        "Какой вопрос Сумин задал, который был особенно эффективным?",
+        "Какой вопрос Сумин задал, который, по вашему мнению, был особенно эффективным?",
+      ),
+    ).toBe(true);
+
+    expect(isRepeatedQuestion("Какие сильные стороны вы видите?", "Какие зоны роста вы видите?")).toBe(false);
   });
 });

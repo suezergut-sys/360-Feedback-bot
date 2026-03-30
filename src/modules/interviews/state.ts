@@ -49,7 +49,7 @@ export function getCurrentStep(state: InterviewState): InterviewStep {
 
 export function looksLikeConsent(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  const yesWords = ["да", "согласен", "согласна", "ок", "хорошо", "начнем", "начинаем"];
+  const yesWords = ["да", "согласен", "согласна", "ок", "хорошо", "начнем", "начинаем", "yes"];
 
   return yesWords.some((word) => normalized.includes(word));
 }
@@ -111,4 +111,61 @@ export function buildFallbackQuestion(competencyName: string, step: InterviewSte
     default:
       return "Можете рассказать подробнее?";
   }
+}
+
+export function normalizeQuestionText(text: string | undefined): string {
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isRepeatedQuestion(previous: string | undefined, next: string | undefined): boolean {
+  const prev = normalizeQuestionText(previous);
+  const curr = normalizeQuestionText(next);
+
+  if (!prev || !curr) {
+    return false;
+  }
+
+  if (prev === curr) {
+    return true;
+  }
+
+  if (prev.length >= 20 && curr.includes(prev)) {
+    return true;
+  }
+
+  if (curr.length >= 20 && prev.includes(curr)) {
+    return true;
+  }
+
+  const prevTokens = new Set(prev.split(" ").filter(Boolean));
+  const currTokens = new Set(curr.split(" ").filter(Boolean));
+  const minTokenCount = Math.min(prevTokens.size, currTokens.size);
+
+  if (minTokenCount < 4) {
+    return false;
+  }
+
+  let overlapCount = 0;
+  for (const token of prevTokens) {
+    if (currTokens.has(token)) {
+      overlapCount += 1;
+    }
+  }
+
+  const smallCoverage = overlapCount / minTokenCount;
+  const largeCoverage = overlapCount / Math.max(prevTokens.size, currTokens.size);
+
+  if (smallCoverage >= 0.85 && largeCoverage >= 0.6) {
+    return true;
+  }
+
+  return false;
 }
