@@ -1,7 +1,19 @@
 import Link from "next/link";
 import { createCampaignAction } from "@/app/(admin)/campaigns/actions";
 
-export default function CreateCampaignPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  campaign_validation:
+    "Проверьте поля кампании: приветственное и финальное сообщения должны быть не короче 10 символов.",
+};
+
+export default async function CreateCampaignPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorText = params.error ? ERROR_MESSAGES[params.error] : undefined;
+
   return (
     <section className="stack-lg">
       <div className="row-between">
@@ -10,6 +22,8 @@ export default function CreateCampaignPage() {
           Назад
         </Link>
       </div>
+
+      {errorText ? <p className="error-text">{errorText}</p> : null}
 
       <form action={createCampaignAction} className="card form-grid">
         <label className="form-label" htmlFor="title">
@@ -46,12 +60,26 @@ export default function CreateCampaignPage() {
         <label className="form-label" htmlFor="welcomeMessage">
           Welcome message
         </label>
-        <textarea id="welcomeMessage" name="welcomeMessage" className="textarea" required rows={4} />
+        <textarea
+          id="welcomeMessage"
+          name="welcomeMessage"
+          className="textarea"
+          required
+          minLength={10}
+          rows={4}
+        />
 
         <label className="form-label" htmlFor="closingMessage">
           Closing message
         </label>
-        <textarea id="closingMessage" name="closingMessage" className="textarea" required rows={4} />
+        <textarea
+          id="closingMessage"
+          name="closingMessage"
+          className="textarea"
+          required
+          minLength={10}
+          rows={4}
+        />
 
         <button className="button primary" type="submit">
           Создать кампанию

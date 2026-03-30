@@ -20,7 +20,7 @@ function parseBehavioralMarkers(value: string): string[] {
 export async function createCampaignAction(formData: FormData) {
   const admin = await requireAdminSession();
 
-  const payload = campaignInputSchema.parse({
+  const parsed = campaignInputSchema.safeParse({
     title: String(formData.get("title") ?? ""),
     description: String(formData.get("description") ?? ""),
     subjectName: String(formData.get("subjectName") ?? ""),
@@ -30,10 +30,14 @@ export async function createCampaignAction(formData: FormData) {
     closingMessage: String(formData.get("closingMessage") ?? ""),
   });
 
+  if (!parsed.success) {
+    redirect("/campaigns/new?error=campaign_validation");
+  }
+
   const campaign = await prisma.campaign.create({
     data: {
       ownerAdminId: admin.id,
-      ...payload,
+      ...parsed.data,
     },
   });
 
@@ -44,7 +48,7 @@ export async function updateCampaignAction(formData: FormData) {
   const admin = await requireAdminSession();
   const campaignId = String(formData.get("campaignId") ?? "");
 
-  const payload = campaignInputSchema.parse({
+  const parsed = campaignInputSchema.safeParse({
     title: String(formData.get("title") ?? ""),
     description: String(formData.get("description") ?? ""),
     subjectName: String(formData.get("subjectName") ?? ""),
@@ -54,12 +58,16 @@ export async function updateCampaignAction(formData: FormData) {
     closingMessage: String(formData.get("closingMessage") ?? ""),
   });
 
+  if (!parsed.success) {
+    redirect(`/campaigns/${campaignId}/edit?error=campaign_validation`);
+  }
+
   await prisma.campaign.updateMany({
     where: {
       id: campaignId,
       ownerAdminId: admin.id,
     },
-    data: payload,
+    data: parsed.data,
   });
 
   revalidatePath(`/campaigns/${campaignId}/edit`);

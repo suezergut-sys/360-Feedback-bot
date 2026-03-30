@@ -5,13 +5,22 @@ import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
 import { CampaignTabs } from "@/components/campaign-tabs";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  campaign_validation:
+    "Проверьте поля кампании: приветственное и финальное сообщения должны быть не короче 10 символов.",
+};
+
 export default async function EditCampaignPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const admin = await requireAdminSession();
   const { id } = await params;
+  const query = await searchParams;
+  const errorText = query.error ? ERROR_MESSAGES[query.error] : undefined;
 
   const campaign = await prisma.campaign.findFirst({
     where: {
@@ -34,6 +43,8 @@ export default async function EditCampaignPage({
       </div>
 
       <CampaignTabs campaignId={campaign.id} />
+
+      {errorText ? <p className="error-text">{errorText}</p> : null}
 
       <form action={updateCampaignAction} className="card form-grid">
         <input type="hidden" name="campaignId" value={campaign.id} />
@@ -90,6 +101,7 @@ export default async function EditCampaignPage({
           name="welcomeMessage"
           className="textarea"
           defaultValue={campaign.welcomeMessage}
+          minLength={10}
           rows={4}
           required
         />
@@ -102,6 +114,7 @@ export default async function EditCampaignPage({
           name="closingMessage"
           className="textarea"
           defaultValue={campaign.closingMessage}
+          minLength={10}
           rows={4}
           required
         />
