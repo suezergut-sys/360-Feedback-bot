@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { CampaignTabs } from "@/components/campaign-tabs";
 import { requireAdminSession } from "@/lib/auth/admin";
@@ -63,14 +64,14 @@ export default async function CampaignCompetenciesPage({
           </thead>
           <tbody>
             {campaign.competencies.map((competency) => (
-              <tr key={competency.id}>
-                <td>{competency.priorityOrder}</td>
-                <td>{competency.name}</td>
-                <td>{competency.description}</td>
-                <td>{markersToString(competency.behavioralMarkers)}</td>
-                <td>{competency.enabled ? "Да" : "Нет"}</td>
-                <td>
-                  <div className="stack-sm">
+              <Fragment key={competency.id}>
+                <tr>
+                  <td>{competency.priorityOrder}</td>
+                  <td>{competency.name}</td>
+                  <td>{competency.description}</td>
+                  <td>{markersToString(competency.behavioralMarkers)}</td>
+                  <td>{competency.enabled ? "Да" : "Нет"}</td>
+                  <td>
                     <form action={toggleCompetencyAction}>
                       <input type="hidden" name="campaignId" value={campaign.id} />
                       <input type="hidden" name="competencyId" value={competency.id} />
@@ -79,82 +80,98 @@ export default async function CampaignCompetenciesPage({
                         {competency.enabled ? "Disable" : "Enable"}
                       </button>
                     </form>
+                  </td>
+                </tr>
 
-                    <details>
+                <tr>
+                  <td colSpan={6} className="!px-4 !py-3">
+                    <details className="rounded-xl border border-[rgb(176_188_223/.24)] bg-[rgb(7_16_44/.45)] px-3 py-2">
                       <summary>Редактировать</summary>
-                      <form action={updateCompetencyAction} className="form-grid" style={{ marginTop: "0.5rem" }}>
+                      <form action={updateCompetencyAction} className="mt-3 grid gap-3 md:grid-cols-2">
                         <input type="hidden" name="campaignId" value={campaign.id} />
                         <input type="hidden" name="competencyId" value={competency.id} />
 
-                        <label className="form-label" htmlFor={`name-${competency.id}`}>
-                          Название
-                        </label>
-                        <input
-                          id={`name-${competency.id}`}
-                          name="name"
-                          className="input"
-                          defaultValue={competency.name}
-                          required
-                        />
+                        <div className="stack-sm">
+                          <label className="form-label" htmlFor={`name-${competency.id}`}>
+                            Название
+                          </label>
+                          <input
+                            id={`name-${competency.id}`}
+                            name="name"
+                            className="input"
+                            defaultValue={competency.name}
+                            required
+                          />
+                        </div>
 
-                        <label className="form-label" htmlFor={`description-${competency.id}`}>
-                          Описание
-                        </label>
-                        <textarea
-                          id={`description-${competency.id}`}
-                          name="description"
-                          className="textarea"
-                          rows={3}
-                          defaultValue={competency.description}
-                          required
-                        />
+                        <div className="stack-sm">
+                          <label className="form-label" htmlFor={`order-${competency.id}`}>
+                            Порядок
+                          </label>
+                          <input
+                            id={`order-${competency.id}`}
+                            name="priorityOrder"
+                            type="number"
+                            className="input"
+                            min={1}
+                            defaultValue={competency.priorityOrder}
+                            required
+                          />
+                        </div>
 
-                        <label className="form-label" htmlFor={`markers-${competency.id}`}>
-                          Behavioral markers
-                        </label>
-                        <textarea
-                          id={`markers-${competency.id}`}
-                          name="behavioralMarkers"
-                          className="textarea"
-                          rows={3}
-                          defaultValue={markersToMultiline(competency.behavioralMarkers)}
-                          required
-                        />
+                        <div className="stack-sm md:col-span-2">
+                          <label className="form-label" htmlFor={`description-${competency.id}`}>
+                            Описание
+                          </label>
+                          <textarea
+                            id={`description-${competency.id}`}
+                            name="description"
+                            className="textarea"
+                            rows={3}
+                            defaultValue={competency.description}
+                            required
+                          />
+                        </div>
 
-                        <label className="form-label" htmlFor={`order-${competency.id}`}>
-                          Порядок
-                        </label>
-                        <input
-                          id={`order-${competency.id}`}
-                          name="priorityOrder"
-                          type="number"
-                          className="input"
-                          min={1}
-                          defaultValue={competency.priorityOrder}
-                          required
-                        />
+                        <div className="stack-sm md:col-span-2">
+                          <label className="form-label" htmlFor={`markers-${competency.id}`}>
+                            Behavioral markers
+                          </label>
+                          <textarea
+                            id={`markers-${competency.id}`}
+                            name="behavioralMarkers"
+                            className="textarea"
+                            rows={4}
+                            defaultValue={markersToMultiline(competency.behavioralMarkers)}
+                            required
+                          />
+                        </div>
 
-                        <label className="form-label" htmlFor={`enabled-${competency.id}`}>
-                          Статус
-                        </label>
-                        <select
-                          id={`enabled-${competency.id}`}
-                          name="enabled"
-                          className="input"
-                          defaultValue={competency.enabled ? "true" : "false"}
-                        >
-                          <option value="true">Включено</option>
-                          <option value="false">Выключено</option>
-                        </select>
+                        <div className="stack-sm">
+                          <label className="form-label" htmlFor={`enabled-${competency.id}`}>
+                            Статус
+                          </label>
+                          <select
+                            id={`enabled-${competency.id}`}
+                            name="enabled"
+                            className="input"
+                            defaultValue={competency.enabled ? "true" : "false"}
+                          >
+                            <option value="true">Включено</option>
+                            <option value="false">Выключено</option>
+                          </select>
+                        </div>
 
-                        <button type="submit" className="button primary small">
-                          Сохранить
-                        </button>
+                        <div className="flex items-end md:justify-end">
+                          <button type="submit" className="button primary">
+                            Сохранить
+                          </button>
+                        </div>
                       </form>
                     </details>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>
