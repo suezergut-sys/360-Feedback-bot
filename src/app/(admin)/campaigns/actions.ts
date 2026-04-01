@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
+import { processDueJobs } from "@/lib/jobs/processor";
 import { enqueueJob } from "@/lib/jobs/queue";
+import { logger } from "@/lib/logging/logger";
 import { campaignInputSchema } from "@/lib/validators/campaign";
 import { competencyInputSchema } from "@/lib/validators/competency";
 import { respondentInputSchema } from "@/lib/validators/respondent";
@@ -214,9 +216,41 @@ export async function triggerAnalysisAction(formData: FormData) {
     redirect("/campaigns");
   }
 
+  const sessionsWithResponses = await prisma.interviewSession.findMany({
+    where: {
+      campaignId,
+      messages: {
+        some: {
+          senderType: "respondent",
+        },
+      },
+    },
+    select: {
+      respondentId: true,
+    },
+    distinct: ["respondentId"],
+  });
+
+  for (const session of sessionsWithResponses) {
+    await enqueueJob("extract_feedback", {
+      campaignId,
+      respondentId: session.respondentId,
+    });
+  }
+
   await enqueueJob("generate_reports", {
     campaignId,
   });
 
+  try {
+    await processDueJobs(Math.max(10, sessionsWithResponses.length + 3));
+  } catch (error) {
+    logger.warn("Manual report trigger queued jobs but immediate processing failed", {
+      campaignId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   revalidatePath(`/campaigns/${campaignId}/reports`);
+  revalidatePath(`/campaigns/${campaignId}/responses`);
 }

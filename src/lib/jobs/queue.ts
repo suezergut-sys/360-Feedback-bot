@@ -21,7 +21,7 @@ export async function fetchDuePendingJobs(limit = 10) {
       status: JobStatus.pending,
       runAt: { lte: new Date() },
     },
-    orderBy: { runAt: "asc" },
+    orderBy: [{ runAt: "asc" }, { createdAt: "asc" }],
     take: limit,
   });
 }
