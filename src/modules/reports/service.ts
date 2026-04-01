@@ -188,7 +188,38 @@ export async function runExtractionForRespondent(campaignId: string, respondentI
   }
 }
 
+async function refreshExtractionForCampaign(campaignId: string): Promise<void> {
+  const sessions = await prisma.interviewSession.findMany({
+    where: {
+      campaignId,
+      messages: {
+        some: {
+          senderType: "respondent",
+        },
+      },
+    },
+    select: {
+      respondentId: true,
+    },
+    distinct: ["respondentId"],
+  });
+
+  for (const session of sessions) {
+    try {
+      await runExtractionForRespondent(campaignId, session.respondentId);
+    } catch (error) {
+      logger.warn("Extraction refresh failed for respondent during report generation", {
+        campaignId,
+        respondentId: session.respondentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
 export async function generateReportsForCampaign(campaignId: string): Promise<void> {
+  await refreshExtractionForCampaign(campaignId);
+
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
     include: {
