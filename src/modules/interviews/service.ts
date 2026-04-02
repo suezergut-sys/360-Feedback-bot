@@ -20,11 +20,11 @@ import {
   incrementMarkerQuestionCount,
   isRepeatedQuestion,
   looksLikeConsent,
+  looksLikeNoAnswer,
   moveToNextCompetency,
   moveToNextMarker,
   moveToNextMethodologyStep,
   parseInterviewState,
-  resetMarkerProgress,
   withInterviewCompleted,
   withInterviewStarted,
   type InterviewState,
@@ -220,7 +220,10 @@ function normalizeMarkerState(state: InterviewState, competency: Competency): In
   const markers = getBehavioralMarkers(competency);
 
   if (!markers.length) {
-    return resetMarkerProgress(state);
+    return {
+      ...state,
+      markerIndex: 0,
+    };
   }
 
   if (state.markerIndex >= markers.length) {
@@ -245,6 +248,19 @@ function moveToNextMarkerOrCompetency(state: InterviewState, competency: Compete
   }
 
   return moveToNextCompetency(state);
+}
+
+function moveAfterQuestionLimit(state: InterviewState, competency: Competency): InterviewState {
+  const markers = getBehavioralMarkers(competency);
+
+  if (markers.length > 0) {
+    return moveToNextMarkerOrCompetency(state, competency);
+  }
+
+  return {
+    ...moveToNextMethodologyStep(state),
+    markerQuestionCount: 0,
+  };
 }
 
 async function finalizeInterview(context: ActiveCampaignContext, sessionId: string, state: InterviewState) {
@@ -308,7 +324,7 @@ async function askNextQuestion(params: {
 
   if (workingState.markerQuestionCount >= MAX_QUESTIONS_PER_MARKER) {
     const previousMarker = getCurrentMarker(workingState, currentCompetency);
-    workingState = moveToNextMarkerOrCompetency(workingState, currentCompetency);
+    workingState = moveAfterQuestionLimit(workingState, currentCompetency);
     currentCompetency = getCurrentCompetency(workingState, params.context.competencies);
 
     if (!currentCompetency) {
@@ -403,11 +419,7 @@ async function askNextQuestion(params: {
     lastQuestion: question,
   };
 
-  if (nextMarker) {
-    storedState = incrementMarkerQuestionCount(storedState);
-  } else {
-    storedState = resetMarkerProgress(storedState);
-  }
+  storedState = incrementMarkerQuestionCount(storedState);
 
   await setSessionState({
     sessionId: params.sessionId,
@@ -623,6 +635,54 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<st
 
   if (state.phase === "completed") {
     return "Интервью уже завершено. Спасибо за участие.";
+  }
+
+  if (looksLikeNoAnswer(text)) {
+    let nextState = competency
+      ? moveAfterQuestionLimit(state, competency)
+      : {
+          ...moveToNextMethodologyStep(state),
+          markerQuestionCount: 0,
+        };
+    const nextCompetency = getCurrentCompetency(nextState, context.competencies);
+
+    if (!nextCompetency) {
+      return finalizeInterview(context, session.id, nextState);
+    }
+
+    nextState = normalizeMarkerState(nextState, nextCompetency);
+    const nextMarker = getCurrentMarker(nextState, nextCompetency);
+    const nextStep = getCurrentStep(nextState);
+    const question = buildFallbackQuestion(nextCompetency.name, nextStep, nextMarker);
+
+    const storedState = incrementMarkerQuestionCount({
+      ...nextState,
+      phase: "interview",
+      lastQuestion: question,
+    });
+
+    await setSessionState({
+      sessionId: session.id,
+      state: storedState,
+      currentCompetencyId: nextCompetency.id,
+    });
+
+    await buildAndStoreAssistantQuestion({
+      sessionId: session.id,
+      competencyId: nextCompetency.id,
+      telegramChatId: input.chatId,
+      text: question,
+    });
+
+    logger.info("Interview no-answer branch: moved to next focus", {
+      sessionId: session.id,
+      previousCompetencyId: competency?.id ?? null,
+      nextCompetencyId: nextCompetency.id,
+      nextMarkerIndex: storedState.markerIndex,
+      nextStep: storedState.stepIndex,
+    });
+
+    return question;
   }
 
   try {

@@ -62,6 +62,28 @@ export function looksLikeConsent(text: string): boolean {
   return yesWords.some((word) => normalized.includes(word));
 }
 
+export function looksLikeNoAnswer(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+
+  const noAnswerPatterns = [
+    "не знаю",
+    "не помню",
+    "не могу вспомнить",
+    "не могу сказать",
+    "не могу ответить",
+    "не могу привести",
+    "нет примера",
+    "нет ответа",
+    "затрудняюсь",
+    "сложно ответить",
+    "ничего не приходит в голову",
+    "не было случаев",
+    "без комментариев",
+  ];
+
+  return noAnswerPatterns.some((pattern) => normalized.includes(pattern));
+}
+
 export function moveToNextMethodologyStep(state: InterviewState): InterviewState {
   const nextStepIndex = state.stepIndex + 1;
 
@@ -201,7 +223,7 @@ export function isRepeatedQuestion(previous: string | undefined, next: string | 
   const smallCoverage = overlapCount / minTokenCount;
   const largeCoverage = overlapCount / Math.max(prevTokens.size, currTokens.size);
 
-  if (smallCoverage >= 0.85 && largeCoverage >= 0.6) {
+  if (smallCoverage >= 0.75 && largeCoverage >= 0.5) {
     return true;
   }
 

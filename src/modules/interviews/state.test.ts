@@ -5,8 +5,9 @@ import {
   incrementMarkerQuestionCount,
   isRepeatedQuestion,
   looksLikeConsent,
-  moveToNextMarker,
+  looksLikeNoAnswer,
   moveToNextCompetency,
+  moveToNextMarker,
   moveToNextMethodologyStep,
   normalizeQuestionText,
   resetMarkerProgress,
@@ -75,6 +76,12 @@ describe("interview state transitions", () => {
     expect(looksLikeConsent("нет")).toBe(false);
   });
 
+  it("detects no-answer phrases", () => {
+    expect(looksLikeNoAnswer("не могу вспомнить конкретный пример")).toBe(true);
+    expect(looksLikeNoAnswer("затрудняюсь ответить")).toBe(true);
+    expect(looksLikeNoAnswer("могу привести пример из последнего проекта")).toBe(false);
+  });
+
   it("marks completion", () => {
     const completed = withInterviewCompleted(createInitialInterviewState());
     expect(completed.phase).toBe("completed");
@@ -82,9 +89,9 @@ describe("interview state transitions", () => {
   });
 
   it("normalizes and detects repeated questions", () => {
-    expect(
-      normalizeQuestionText("Какой вопрос Сумин задал, который был особенно эффективным?"),
-    ).toBe("какой вопрос сумин задал который был особенно эффективным");
+    expect(normalizeQuestionText("Какой вопрос Сумин задал, который был особенно эффективным?")).toBe(
+      "какой вопрос сумин задал который был особенно эффективным",
+    );
 
     expect(
       isRepeatedQuestion(
