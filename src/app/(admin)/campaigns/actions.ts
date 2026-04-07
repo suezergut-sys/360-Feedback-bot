@@ -173,6 +173,9 @@ export async function createRespondentAction(formData: FormData) {
 
   const payload = respondentInputSchema.parse({
     displayName: String(formData.get("displayName") ?? "").trim() || undefined,
+    role: String(formData.get("role") ?? "colleague"),
+    position: String(formData.get("position") ?? "").trim() || undefined,
+    department: String(formData.get("department") ?? "").trim() || undefined,
   });
 
   const campaign = await prisma.campaign.findFirst({
@@ -191,6 +194,9 @@ export async function createRespondentAction(formData: FormData) {
     data: {
       campaignId,
       displayName: payload.displayName,
+      role: payload.role,
+      position: payload.position,
+      department: payload.department,
       inviteToken: crypto.randomUUID(),
       status: "invited",
     },

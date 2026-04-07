@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { CampaignTabs } from "@/components/campaign-tabs";
 import { triggerAnalysisAction } from "@/app/(admin)/campaigns/actions";
 import { requireAdminSession } from "@/lib/auth/admin";
@@ -41,12 +42,17 @@ export default async function CampaignReportsPage({
     <section className="stack-lg">
       <div className="row-between">
         <h2>Отчеты: {campaign.title}</h2>
-        <form action={triggerAnalysisAction}>
-          <input type="hidden" name="campaignId" value={campaign.id} />
-          <button type="submit" className="button primary">
-            Перегенерировать отчеты
-          </button>
-        </form>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <Link href={`/campaigns/${campaign.id}/reports/visual`} className="button">
+            Визуальный отчёт →
+          </Link>
+          <form action={triggerAnalysisAction}>
+            <input type="hidden" name="campaignId" value={campaign.id} />
+            <button type="submit" className="button primary">
+              Перегенерировать отчеты
+            </button>
+          </form>
+        </div>
       </div>
 
       <CampaignTabs campaignId={campaign.id} />

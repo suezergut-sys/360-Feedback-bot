@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum CampaignStatus {
@@ -43,6 +44,13 @@ enum JobStatus {
   running
   completed
   failed
+}
+
+enum RespondentRole {
+  self
+  manager
+  colleague
+  client
 }
 
 model Admin {
@@ -87,6 +95,7 @@ model Competency {
   campaignId          String               @map("campaign_id")
   name                String
   description         String
+  groupName           String?              @map("group_name")
   behavioralMarkers   Json                 @map("behavioral_markers_json")
   priorityOrder       Int                  @map("priority_order")
   enabled             Boolean              @default(true)
@@ -109,6 +118,9 @@ model Respondent {
   telegramUserId   BigInt?           @map("telegram_user_id")
   telegramUsername String?           @map("telegram_username")
   displayName      String?           @map("display_name")
+  role             RespondentRole    @default(colleague)
+  position         String?
+  department       String?
   inviteToken      String            @unique @map("invite_token")
   status           RespondentStatus  @default(invited)
   createdAt        DateTime          @default(now()) @map("created_at")
