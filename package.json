@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--require=./scripts/readlink-patch.cjs next dev",
-    "build": "cross-env NODE_OPTIONS=--require=./scripts/readlink-patch.cjs next build",
+    "build": "prisma generate && cross-env NODE_OPTIONS=--require=./scripts/readlink-patch.cjs next build",
     "start": "cross-env NODE_OPTIONS=--require=./scripts/readlink-patch.cjs next start",
     "lint": "next lint",
     "test": "vitest run",
