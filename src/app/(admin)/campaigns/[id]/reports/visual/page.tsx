@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
 import { buildVisualReportData, type VisualCompetencyData, type RespondentRole } from "@/modules/reports/assembly";
+import { PrintButton } from "./PrintButton";
 
 const ROLE_LABELS: Record<RespondentRole, string> = {
   self: "Самооценка",
@@ -225,9 +226,7 @@ export default async function VisualReportPage({
       {/* Sticky admin bar */}
       <div className="vr-no-print">
         <Link href={`/campaigns/${id}/reports`}>← Назад к отчётам</Link>
-        <button onClick={() => window.print()} type="button">
-          Печать / Сохранить PDF
-        </button>
+        <PrintButton />
         <span style={{ color: "#64748b", fontSize: "12px" }}>
           {completedRespondents} из {totalRespondents} экспертов завершили интервью
         </span>
