@@ -1,171 +1,239 @@
-﻿# 360 Feedback AI Bot
+# 360 Feedback AI Bot
 
-Production-oriented MVP of a Telegram-based 360 feedback system with:
-- AI interviewer in Telegram (text + voice input)
-- Admin panel in Next.js
-- PostgreSQL + Prisma structured storage
-- OpenAI-based extraction and reporting
-- Job processing compatible with serverless/Vercel
+Telegram-бот и веб-панель для проведения опросов 360° обратной связи.
 
-## Stack
-- Next.js App Router + TypeScript
-- PostgreSQL + Prisma
-- Telegram Bot API (webhook)
-- OpenAI API (interview/extraction/report + transcription)
-- Zod validation
-- Optional Upstash Redis / Vercel KV for idempotency, rate limits, locks
-- Vitest for core unit tests
+- Структурированный опрос по 10 компетенциям через кнопки Telegram
+- Открытые вопросы голосом или текстом
+- Автоматическое извлечение инсайтов и генерация отчётов через OpenAI
+- Админ-панель на Next.js для управления кампаниями, респондентами и отчётами
+- Serverless-деплой на Vercel + PostgreSQL (Supabase)
 
-## Main capabilities
+---
 
-### Admin panel
-- Admin login
-- Campaign list / create / edit
-- Competencies management
-- Manual respondent management
-- Invite link generation
-- Progress dashboard
-- Raw responses viewer
-- Reports viewer
-- Manual report re-trigger
+## Стек
 
-### Telegram bot flow
-- `/start <token>` invite validation
-- Consent checkpoint
-- Interview in Russian with fixed methodology by competency
-- Text and voice answers supported
-- Voice -> transcription (audio file deleted after processing)
-- Resume support via persisted interview state
-- `/resume`, `/help`, `/finish`
+| Слой | Технологии |
+|------|-----------|
+| Frontend / Backend | Next.js 15 App Router + TypeScript |
+| БД | PostgreSQL + Prisma 6 |
+| Telegram | Bot API (webhook, inline keyboard, callback_query) |
+| AI | OpenAI API — интервью, извлечение, отчёты, транскрипция голоса |
+| Валидация | Zod |
+| Auth | bcryptjs + jose (JWT cookie) |
+| KV (опционально) | Upstash Redis / Vercel KV |
+| Тесты | Vitest |
 
-### Analysis/reporting
-- Extraction mode: structured competency evidence from raw answers
-- Report mode:
-  - Competency reports
-  - Overall campaign report
-- Structured JSON intermediate artifacts stored in DB
-- Retryable job execution with soft locking
+---
 
-## Project structure
+## Функциональность
 
-```text
+### Telegram-бот — поток опроса
+
+```
+/start <token>
+  └─ Приветствие с именем оцениваемого
+     └─ Кнопка [Начать]
+        └─ Рейтинг 10 компетенций (inline keyboard 1–5 / N/A)
+           └─ 4 открытых вопроса (текст или голос)
+              └─ Завершение → запуск анализа
+```
+
+1. **Согласие** — приветственное сообщение с кнопкой «Начать»
+2. **Оценка компетенций** — по каждой компетенции показывается название, блок и описание; респондент нажимает одну из кнопок: `1 2 3 4 5 N/A`
+3. **Открытые вопросы** — текстом или голосом:
+   - Сильные стороны руководителя
+   - Зоны развития
+   - Поведение, мешающее эффективности
+   - Дополнительные комментарии (необязательно)
+4. **Завершение** — автоматически запускается извлечение данных и генерация отчётов
+
+Дополнительные команды: `/resume`, `/finish`, `/help`
+
+### 10 компетенций (предустановленные)
+
+При создании новой кампании автоматически добавляются все 10 компетенций:
+
+| # | Компетенция | Блок |
+|---|-------------|------|
+| 1 | Критическое мышление | Аналитические способности |
+| 2 | Системное мышление | Аналитические способности |
+| 3 | Логика и аргументация | Аналитические способности |
+| 4 | Лидерство и влияние | Управление людьми |
+| 5 | Управление командой | Управление людьми |
+| 6 | Эффективная коммуникация | Управление людьми |
+| 7 | Гибкость и адаптивность | Гибкость и изменения |
+| 8 | Открытость к развитию | Гибкость и изменения |
+| 9 | Ориентация на результат | Мотивация и драйв |
+| 10 | Инициативность | Мотивация и драйв |
+
+Компетенции можно включать/отключать и редактировать в админ-панели.
+
+### Шкала оценки
+
+```
+1 — Почти никогда
+2 — Редко
+3 — Иногда
+4 — Часто
+5 — Почти всегда
+N/A — Не было возможности наблюдать
+```
+
+### Админ-панель
+
+- Список кампаний с возможностью удаления (каскадно удаляет все данные)
+- Создание / редактирование кампании
+- Управление компетенциями
+- Управление респондентами + генерация инвайт-ссылок
+- Дашборд прогресса
+- Просмотр сырых ответов
+- Просмотр и повторная генерация отчётов
+- Визуальный отчёт 360 с группировкой по ролям
+
+### Анализ и отчёты
+
+- Извлечение структурированной обратной связи из ответов (OpenAI, JSON mode)
+- Компетентностные отчёты + сводный отчёт по кампании
+- Артефакты хранятся в БД (Markdown + JSON)
+- Повторная генерация через UI или API
+- Асинхронная очередь задач с retry и soft-lock
+
+---
+
+## Структура проекта
+
+```
 /src
   /app
-    /(auth)/login
-    /(admin)/campaigns
-    /api/telegram/webhook
-    /api/cron/jobs
-    /api/health
-  /components
+    /(auth)/login              # Вход в админ-панель
+    /(admin)/campaigns         # UI кампаний
+    /api/telegram/webhook      # Webhook Telegram
+    /api/campaigns/[id]        # DELETE кампании
+    /api/cron/jobs             # Обработчик очереди
+    /api/health                # Health check
+  /components                  # React компоненты
+  /data
+    competency-templates.ts    # 10 предустановленных компетенций
   /lib
-    /auth
-    /audio
-    /db
-    /jobs
-    /kv
-    /logging
-    /openai
-    /security
-    /telegram
-    /validators
+    /auth                      # JWT сессия
+    /audio                     # Транскрипция голоса
+    /db                        # Prisma клиент
+    /jobs                      # Очередь и процессор задач
+    /kv                        # Redis/KV клиент
+    /logging                   # Структурированные логи
+    /openai                    # OpenAI API
+    /security                  # Rate limit, prompt safety
+    /telegram                  # Telegram Bot API клиент
+    /validators                # Zod схемы
   /modules
-    /campaigns
-    /competencies
-    /interviews
-    /reports
-    /respondents
-  /prompts
+    /campaigns                 # CRUD кампаний
+    /competencies              # CRUD компетенций
+    /interviews                # Состояние и логика опроса
+    /reports                   # Генерация и сборка отчётов
+    /respondents               # Токены и статусы
+  /prompts                     # Системные промпты для OpenAI
   /types
   /utils
 /prisma
-/docs
+  /migrations
+  schema.prisma
+  seed.ts
 /scripts
+  readlink-patch.cjs           # Патч для Windows-сборки
 ```
 
-## Data model (Prisma)
-Implemented entities:
-- `Admin`
-- `Campaign`
-- `Competency`
-- `Respondent`
-- `InterviewSession`
-- `Message`
-- `CompetencyFeedback`
-- `AnalysisReport`
-- `Job`
-- `TelegramUpdateLog` (idempotency dedupe)
+---
 
-Migration included: `prisma/migrations/20260323180000_init/migration.sql`
+## Модель данных (Prisma)
 
-## Environment variables
-Use `.env.example`:
+| Модель | Назначение |
+|--------|-----------|
+| `Admin` | Учётные записи администраторов |
+| `Campaign` | Кампании 360° |
+| `CompetencyTemplate` | Глобальная библиотека шаблонов компетенций |
+| `Competency` | Компетенции кампании (создаются из шаблонов) |
+| `Respondent` | Участники опроса |
+| `InterviewSession` | Сессии с состоянием опроса |
+| `Message` | Лог переписки (текст + голос) |
+| `CompetencyRating` | Оценки 1–5/N/A по компетенциям (кнопки) |
+| `CompetencyFeedback` | Извлечённая обратная связь по компетенции |
+| `AnalysisReport` | Финальные отчёты (Markdown + JSON) |
+| `Job` | Очередь фоновых задач |
+| `TelegramUpdateLog` | Идемпотентность webhook-обновлений |
+
+Все связи от `Campaign`, `Respondent`, `InterviewSession` настроены на каскадное удаление.
+
+Миграции:
+- `20260323180000_init`
+- `20260407184417_add_respondent_role_profile`
+- `20260408120000_add_competency_templates_and_ratings`
+
+---
+
+## Переменные окружения
+
+Скопировать из `.env.example`:
 
 ```env
+# PostgreSQL (обязательно)
 DATABASE_URL=
+DIRECT_URL=
+
+# OpenAI (обязательно)
 OPENAI_API_KEY=
+
+# Telegram (обязательно)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
-TELEGRAM_BOT_USERNAME=
+TELEGRAM_BOT_USERNAME=   # опционально, для красивых t.me ссылок
+
+# Приложение
 APP_BASE_URL=
 AUTH_SECRET=
 CRON_SECRET=
 
+# Upstash Redis / Vercel KV (опционально)
 KV_REST_API_URL=
 KV_REST_API_TOKEN=
 ```
 
-Notes:
-- KV vars are optional.
-- Core business data is always stored in PostgreSQL.
-- `TELEGRAM_BOT_USERNAME` is optional, but recommended for direct `t.me` invite links.
+> KV-переменные опциональны. Без них система работает на DB-fallback и in-memory fallback.
 
-## Local setup
+---
 
-1. Install dependencies:
+## Локальная установка
 
 ```bash
+# 1. Зависимости
 npm install
-```
 
-2. Configure env:
-
-```bash
+# 2. Конфигурация
 cp .env.example .env
-# fill values
-```
+# заполнить значения
 
-3. Run migration:
-
-```bash
+# 3. Миграция БД
 npm run prisma:migrate:dev
-```
 
-4. Generate Prisma client (if needed):
-
-```bash
+# 4. Генерация Prisma-клиента (если нужно отдельно)
 npm run prisma:generate
-```
 
-5. Seed demo data:
-
-```bash
+# 5. Демо-данные
 npm run prisma:seed
 ```
 
-Seed creates:
-- admin `admin@360bot.local`
-- password `ChangeMe123!`
-- one demo campaign with competencies + respondents
-
-6. Start app:
+Seed создаёт:
+- Администратор: `admin@360bot.local` / `ChangeMe123!`
+- Демо-кампания с 10 компетенциями и 3 респондентами
+- Шаблоны компетенций в таблице `competency_templates`
 
 ```bash
+# 6. Запуск
 npm run dev
 ```
 
-## Telegram webhook setup
+---
 
-Assuming deployment URL is `https://your-app.vercel.app`:
+## Настройка Telegram webhook
 
 ```bash
 curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
@@ -176,72 +244,80 @@ curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
   }'
 ```
 
-Check status:
+Проверить статус:
 
 ```bash
 curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 ```
 
-## Cron / job processing
+---
 
-Endpoint:
-- `POST /api/cron/jobs`
-- Header: `Authorization: Bearer <CRON_SECRET>`
+## Cron / обработка задач
 
-Example:
-
-```bash
-curl -X POST "https://your-app.vercel.app/api/cron/jobs" \
-  -H "Authorization: Bearer <CRON_SECRET>"
+```
+POST /api/cron/jobs
+Authorization: Bearer <CRON_SECRET>
 ```
 
-On Vercel, configure a scheduled job to call this endpoint.
+На Vercel настроен в `vercel.json`:
+```json
+{
+  "crons": [{ "path": "/api/cron/jobs", "schedule": "0 9 * * *" }]
+}
+```
 
-## OpenAI integration
+---
 
-Implemented modes:
-- Interview mode (`generateInterviewDecision`)
-- Extraction mode (`extractCompetencyFeedback`)
-- Report mode (`generateCompetencyReport`, `generateOverallReport`)
-- Transcription (`transcribeTelegramVoice`)
+## Деплой на Vercel
 
-All AI boundary payloads are validated with Zod.
+1. Пуш репозитория на GitHub
+2. Импортировать проект в Vercel
+3. Добавить переменные окружения
+4. Подключить PostgreSQL (например, Supabase) и задать `DATABASE_URL` / `DIRECT_URL`
+5. Применить миграции:
 
-## Optional KV integration
+```bash
+npx prisma migrate deploy
+```
 
-If KV is configured:
-- Telegram update idempotency cache
-- Rate limiting
-- Soft lock for report generation
+6. Сид (один раз, опционально):
 
-If KV is not configured:
-- System still runs using DB fallback and local in-memory fallbacks where appropriate.
+```bash
+npm run prisma:seed
+```
 
-## Auth/security implemented
-- Password-based admin auth (`bcryptjs`)
-- Signed admin session cookie (`jose`)
-- Protected admin routes
-- Telegram webhook secret validation
-- Rate limiting helper
-- Prompt-safety sanitization for interview context
-- Structured JSON logs
-- Zod input validation on external boundaries
+7. Настроить Telegram webhook на продакшн URL
+8. Cron настроен автоматически через `vercel.json`
 
-## Tests
+---
 
-Run:
+## Безопасность
+
+- Парольная аутентификация администратора (bcryptjs)
+- Подписанная сессионная cookie (jose / JWT, 7 дней)
+- Защищённые admin-маршруты
+- Валидация секрета Telegram webhook
+- Rate limiting (50 запросов / 60 сек на пользователя)
+- Санитизация пользовательского ввода перед подстановкой в промпты
+- Zod-валидация на всех внешних границах
+
+---
+
+## Тесты
 
 ```bash
 npm test
 ```
 
-Current tests cover:
-- Invite token validation
-- Interview state transitions
-- Extraction schema parsing
-- Report assembly utilities
+Покрытие:
+- Валидация инвайт-токенов
+- Переходы состояний интервью
+- Парсинг схемы извлечения
+- Утилиты сборки отчётов
 
-## Build & verification
+---
+
+## Сборка и проверка
 
 ```bash
 npm run lint
@@ -249,41 +325,21 @@ npm test
 npm run build
 ```
 
-A Windows `readlink` filesystem behavior is patched via `scripts/readlink-patch.cjs` and `NODE_OPTIONS` in npm scripts. This keeps local build stable in directories where Node returns `EISDIR` for `readlink` on regular files.
+> **Windows:** патч `scripts/readlink-patch.cjs` исправляет поведение `fs.readlink` (`EISDIR` → `EINVAL`) при сборке webpack. Применяется автоматически через `NODE_OPTIONS` в npm-скрипте `build`. На Linux/Vercel патч не нужен.
 
-## Vercel deployment
+---
 
-1. Push repository to GitHub.
-2. Import project in Vercel.
-3. Set all required environment variables in Vercel.
-4. Provision PostgreSQL and set `DATABASE_URL`.
-5. Run migrations in deploy pipeline or manually:
+## Health check
 
-```bash
-npm run prisma:migrate
-npm run prisma:generate
+```
+GET /api/health
 ```
 
-6. Seed once if desired (manual run):
+---
 
-```bash
-npm run prisma:seed
-```
+## Ограничения текущей версии
 
-7. Configure Telegram webhook to production URL.
-8. Configure Vercel Cron for `/api/cron/jobs`.
-
-## MVP limitations
-- Single admin scope (no multi-tenant RBAC)
-- Fixed interview methodology (not configurable yet)
-- No PDF/DOCX export
-- No quantitative scoring
-- No automated reminder workflow by default
-- No respondent role segmentation
-- No advanced audit trail UI
-
-## Health endpoint
-- `GET /api/health`
-
-## License
-Internal MVP / project template.
+- Один администратор на инстанс (нет multi-tenant RBAC)
+- Нет PDF/DOCX экспорта
+- Нет автоматических напоминаний респондентам
+- Нет расширенного audit trail UI
