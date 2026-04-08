@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
+import { createCampaign } from "@/modules/campaigns/service";
 import { processDueJobs } from "@/lib/jobs/processor";
 import { enqueueJob } from "@/lib/jobs/queue";
 import { logger } from "@/lib/logging/logger";
@@ -36,12 +37,7 @@ export async function createCampaignAction(formData: FormData) {
     redirect("/campaigns/new?error=campaign_validation");
   }
 
-  const campaign = await prisma.campaign.create({
-    data: {
-      ownerAdminId: admin.id,
-      ...parsed.data,
-    },
-  });
+  const campaign = await createCampaign(admin.id, parsed.data);
 
   redirect(`/campaigns/${campaign.id}/edit`);
 }
