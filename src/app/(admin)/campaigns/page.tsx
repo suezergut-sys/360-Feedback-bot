@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listCampaigns } from "@/modules/campaigns/service";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { StatusBadge } from "@/components/status-badge";
+import { DeleteCampaignButton } from "@/components/delete-campaign-button";
 
 export default async function CampaignsPage() {
   const admin = await requireAdminSession();
@@ -39,10 +40,11 @@ export default async function CampaignsPage() {
                     <StatusBadge status={campaign.status} />
                   </td>
                   <td>{campaign._count.respondents}</td>
-                  <td>
+                  <td className="row-gap">
                     <Link href={`/campaigns/${campaign.id}/edit`} className="link-inline">
                       Открыть
                     </Link>
+                    <DeleteCampaignButton campaignId={campaign.id} campaignTitle={campaign.title} />
                   </td>
                 </tr>
               ))}

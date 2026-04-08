@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const fromSchema = z.object({
+  id: z.number(),
+  username: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  language_code: z.string().optional(),
+});
+
 const messageSchema = z.object({
   message_id: z.number().int(),
   text: z.string().optional(),
@@ -15,22 +23,28 @@ const messageSchema = z.object({
     id: z.number(),
     type: z.string(),
   }),
-  from: z
+  from: fromSchema.optional(),
+  date: z.number().int(),
+});
+
+const callbackQuerySchema = z.object({
+  id: z.string(),
+  from: fromSchema,
+  message: z
     .object({
-      id: z.number(),
-      username: z.string().optional(),
-      first_name: z.string().optional(),
-      last_name: z.string().optional(),
-      language_code: z.string().optional(),
+      message_id: z.number().int(),
+      chat: z.object({ id: z.number() }),
     })
     .optional(),
-  date: z.number().int(),
+  data: z.string().optional(),
 });
 
 export const telegramUpdateSchema = z.object({
   update_id: z.number().int(),
   message: messageSchema.optional(),
   edited_message: messageSchema.optional(),
+  callback_query: callbackQuerySchema.optional(),
 });
 
 export type TelegramUpdate = z.infer<typeof telegramUpdateSchema>;
+export type TelegramCallbackQuery = z.infer<typeof callbackQuerySchema>;

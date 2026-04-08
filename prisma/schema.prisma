@@ -84,6 +84,7 @@ model Campaign {
   sessions       InterviewSession[]
   feedback       CompetencyFeedback[]
   reports        AnalysisReport[]
+  ratings        CompetencyRating[]
 
   @@index([ownerAdminId])
   @@index([status])
@@ -105,6 +106,7 @@ model Competency {
   campaign            Campaign             @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   feedback            CompetencyFeedback[]
   reports             AnalysisReport[]
+  ratings             CompetencyRating[]
   currentInSessions   InterviewSession[]   @relation("CurrentCompetency")
   messages            Message[]
 
@@ -129,6 +131,7 @@ model Respondent {
   campaign         Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   sessions         InterviewSession[]
   feedback         CompetencyFeedback[]
+  ratings          CompetencyRating[]
 
   @@index([campaignId, status])
   @@index([telegramUserId])
@@ -241,4 +244,34 @@ model TelegramUpdateLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("telegram_update_logs")
+}
+
+model CompetencyTemplate {
+  id            String   @id @default(cuid())
+  name          String
+  description   String
+  groupName     String?  @map("group_name")
+  priorityOrder Int      @map("priority_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([priorityOrder])
+  @@map("competency_templates")
+}
+
+model CompetencyRating {
+  id           String     @id @default(cuid())
+  campaignId   String     @map("campaign_id")
+  respondentId String     @map("respondent_id")
+  competencyId String     @map("competency_id")
+  rating       Int?
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  campaign     Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  respondent   Respondent @relation(fields: [respondentId], references: [id], onDelete: Cascade)
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([respondentId, competencyId])
+  @@index([campaignId, competencyId])
+  @@map("competency_ratings")
 }

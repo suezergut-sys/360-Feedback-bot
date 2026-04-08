@@ -161,6 +161,14 @@
     @apply text-[var(--accent-cyan)] underline decoration-[rgb(45_198_255/.55)] underline-offset-2 hover:text-white;
   }
 
+  .link-inline.danger {
+    @apply text-[rgb(255_100_100)] decoration-[rgb(255_100_100/.45)] hover:text-[rgb(255_160_160)];
+  }
+
+  .row-gap {
+    @apply flex flex-row items-center gap-3;
+  }
+
   .badge {
     @apply inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide;
   }

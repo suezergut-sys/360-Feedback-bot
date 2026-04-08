@@ -1,3 +1,4 @@
+// Legacy methodology steps — kept for backward compatibility with old "interview" phase sessions
 export const INTERVIEW_STEPS = [
   "opening",
   "example",
@@ -10,10 +11,15 @@ export const INTERVIEW_STEPS = [
 export const MAX_QUESTIONS_PER_MARKER = 3;
 
 export type InterviewStep = (typeof INTERVIEW_STEPS)[number];
-export type InterviewPhase = "consent" | "interview" | "completed";
+export type InterviewPhase = "consent" | "rating" | "open_questions" | "interview" | "completed";
 
 export type InterviewState = {
   phase: InterviewPhase;
+  // Rating phase: index of the current competency being rated (0–9)
+  ratingIndex: number;
+  // Open questions phase: index of the current open question (0–3)
+  openQuestionIndex: number;
+  // Legacy fields for old "interview" phase sessions
   competencyIndex: number;
   stepIndex: number;
   markerIndex: number;
@@ -22,9 +28,45 @@ export type InterviewState = {
   lastQuestion?: string;
 };
 
+export type OpenQuestion = {
+  id: string;
+  heading: string;
+  text: string;
+  optional: boolean;
+};
+
+export const OPEN_QUESTIONS: OpenQuestion[] = [
+  {
+    id: "strengths",
+    heading: "Сильные стороны",
+    text: "Какие сильные стороны этого руководителя вы бы отметили?",
+    optional: false,
+  },
+  {
+    id: "growth",
+    heading: "Зоны развития",
+    text: "Что этому руководителю стоит начать делать или делать чаще?",
+    optional: false,
+  },
+  {
+    id: "stop",
+    heading: "Поведение, которое мешает эффективности",
+    text: "Есть ли что-то, что руководителю стоит перестать делать?",
+    optional: false,
+  },
+  {
+    id: "other",
+    heading: "Дополнительно (необязательно)",
+    text: "Есть ли у вас другие комментарии или рекомендации?\n\nЕсли нет — напишите «нет» или «-».",
+    optional: true,
+  },
+];
+
 export function createInitialInterviewState(): InterviewState {
   return {
     phase: "consent",
+    ratingIndex: 0,
+    openQuestionIndex: 0,
     competencyIndex: 0,
     stepIndex: 0,
     markerIndex: 0,
@@ -40,8 +82,15 @@ export function parseInterviewState(raw: unknown): InterviewState {
 
   const state = raw as Partial<InterviewState>;
 
+  const validPhases: InterviewPhase[] = ["consent", "rating", "open_questions", "interview", "completed"];
+  const phase = validPhases.includes(state.phase as InterviewPhase)
+    ? (state.phase as InterviewPhase)
+    : "consent";
+
   return {
-    phase: state.phase === "interview" || state.phase === "completed" ? state.phase : "consent",
+    phase,
+    ratingIndex: Number.isInteger(state.ratingIndex) ? Math.max(0, Number(state.ratingIndex)) : 0,
+    openQuestionIndex: Number.isInteger(state.openQuestionIndex) ? Math.max(0, Number(state.openQuestionIndex)) : 0,
     competencyIndex: Number.isInteger(state.competencyIndex) ? Math.max(0, Number(state.competencyIndex)) : 0,
     stepIndex: Number.isInteger(state.stepIndex) ? Math.max(0, Number(state.stepIndex)) : 0,
     markerIndex: Number.isInteger(state.markerIndex) ? Math.max(0, Number(state.markerIndex)) : 0,
@@ -51,6 +100,30 @@ export function parseInterviewState(raw: unknown): InterviewState {
   };
 }
 
+// ── Phase transitions ──────────────────────────────────────────────────────
+
+export function withRatingStarted(state: InterviewState): InterviewState {
+  return { ...state, phase: "rating", ratingIndex: 0 };
+}
+
+export function moveToNextRating(state: InterviewState): InterviewState {
+  return { ...state, ratingIndex: state.ratingIndex + 1 };
+}
+
+export function withOpenQuestionsStarted(state: InterviewState): InterviewState {
+  return { ...state, phase: "open_questions", openQuestionIndex: 0 };
+}
+
+export function moveToNextOpenQuestion(state: InterviewState): InterviewState {
+  return { ...state, openQuestionIndex: state.openQuestionIndex + 1 };
+}
+
+export function withInterviewCompleted(state: InterviewState): InterviewState {
+  return { ...state, phase: "completed", completed: true };
+}
+
+// ── Legacy helpers (kept for old "interview" phase sessions) ──────────────
+
 export function getCurrentStep(state: InterviewState): InterviewStep {
   return INTERVIEW_STEPS[Math.min(state.stepIndex, INTERVIEW_STEPS.length - 1)];
 }
@@ -58,7 +131,6 @@ export function getCurrentStep(state: InterviewState): InterviewStep {
 export function looksLikeConsent(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   const yesWords = ["да", "согласен", "согласна", "ок", "хорошо", "начнем", "начинаем", "yes"];
-
   return yesWords.some((word) => normalized.includes(word));
 }
 
@@ -84,14 +156,17 @@ export function looksLikeNoAnswer(text: string): boolean {
   return noAnswerPatterns.some((pattern) => normalized.includes(pattern));
 }
 
+export function looksLikeSkip(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?]+$/, "");
+  const skipValues = ["нет", "н", "-", "—", "пропустить", "skip", "no", "ничего", "нет ничего"];
+  return skipValues.includes(normalized);
+}
+
 export function moveToNextMethodologyStep(state: InterviewState): InterviewState {
   const nextStepIndex = state.stepIndex + 1;
 
   if (nextStepIndex < INTERVIEW_STEPS.length) {
-    return {
-      ...state,
-      stepIndex: nextStepIndex,
-    };
+    return { ...state, stepIndex: nextStepIndex };
   }
 
   return {
@@ -123,33 +198,17 @@ export function moveToNextMarker(state: InterviewState): InterviewState {
 }
 
 export function incrementMarkerQuestionCount(state: InterviewState): InterviewState {
-  return {
-    ...state,
-    markerQuestionCount: state.markerQuestionCount + 1,
-  };
+  return { ...state, markerQuestionCount: state.markerQuestionCount + 1 };
 }
 
 export function resetMarkerProgress(state: InterviewState): InterviewState {
-  return {
-    ...state,
-    markerIndex: 0,
-    markerQuestionCount: 0,
-  };
+  return { ...state, markerIndex: 0, markerQuestionCount: 0 };
 }
+
+// ── Legacy phase transition (kept for old sessions) ───────────────────────
 
 export function withInterviewStarted(state: InterviewState): InterviewState {
-  return {
-    ...state,
-    phase: "interview",
-  };
-}
-
-export function withInterviewCompleted(state: InterviewState): InterviewState {
-  return {
-    ...state,
-    phase: "completed",
-    completed: true,
-  };
+  return { ...state, phase: "interview" };
 }
 
 export function buildFallbackQuestion(competencyName: string, step: InterviewStep, marker?: string | null): string {

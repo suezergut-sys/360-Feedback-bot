@@ -5,16 +5,21 @@ import { ensureUpdateNotProcessed } from "@/lib/kv/idempotency";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { logger } from "@/lib/logging/logger";
 import {
+  answerCallbackQuery,
+  editTelegramMessageText,
   extractStartToken,
   sendTelegramMessage,
+  sendTelegramMessageWithKeyboard,
   sendTelegramTyping,
 } from "@/lib/telegram/client";
 import {
   handleFinishCommand,
   handleHelpCommand,
+  handleRatingCallback,
   handleRespondentMessage,
   handleResumeCommand,
   handleStartCommand,
+  type BotReply,
 } from "@/modules/interviews/service";
 import { transcribeTelegramVoice } from "@/lib/audio/transcription";
 
@@ -26,6 +31,16 @@ function isSecretValid(request: Request): boolean {
   return Boolean(secret && secret === expected);
 }
 
+async function sendReply(chatId: number, reply: BotReply): Promise<void> {
+  if (!reply.text) return;
+
+  if (reply.keyboard) {
+    await sendTelegramMessageWithKeyboard(chatId, reply.text, reply.keyboard);
+  } else {
+    await sendTelegramMessage(chatId, reply.text);
+  }
+}
+
 export async function POST(request: Request) {
   if (!isSecretValid(request)) {
     return NextResponse.json({ ok: false }, { status: 401 });
@@ -35,10 +50,7 @@ export async function POST(request: Request) {
   const parsed = telegramUpdateSchema.safeParse(body);
 
   if (!parsed.success) {
-    logger.warn("Invalid telegram update payload", {
-      issues: parsed.error.issues,
-    });
-
+    logger.warn("Invalid telegram update payload", { issues: parsed.error.issues });
     return NextResponse.json({ ok: true });
   }
 
@@ -49,6 +61,58 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
+  // ── Callback query (inline keyboard button press) ──────────────────────
+  if (update.callback_query) {
+    const cbq = update.callback_query;
+    const userId = BigInt(cbq.from.id);
+    const chatId = cbq.message?.chat.id;
+    const messageId = cbq.message?.message_id;
+    const callbackData = cbq.data ?? "";
+
+    await answerCallbackQuery(cbq.id);
+
+    if (!chatId) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const limited = await checkRateLimit(`telegram:user:${userId.toString()}`, 50, 60);
+
+    if (!limited) {
+      await sendTelegramMessage(chatId, "Слишком много запросов. Попробуйте через минуту.");
+      return NextResponse.json({ ok: true });
+    }
+
+    try {
+      const result = await handleRatingCallback({
+        telegramUserId: userId,
+        chatId,
+        callbackData,
+      });
+
+      if (result.editText && messageId) {
+        await editTelegramMessageText(chatId, messageId, result.editText);
+      }
+
+      if (result.reply) {
+        await sendReply(chatId, result.reply);
+      }
+    } catch (error) {
+      logger.error("Callback query handler failed", {
+        updateId: update.update_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      try {
+        await sendTelegramMessage(chatId, "Произошла ошибка. Попробуйте повторить позже.");
+      } catch {
+        // ignore
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Regular message ────────────────────────────────────────────────────
   const message = update.message ?? update.edited_message;
 
   if (!message?.from) {
@@ -68,21 +132,21 @@ export async function POST(request: Request) {
   const text = message.text?.trim();
 
   try {
-    let replyText: string;
+    let reply: BotReply;
 
     if (text?.startsWith("/start")) {
-      replyText = await handleStartCommand({
+      reply = await handleStartCommand({
         inviteToken: extractStartToken(text),
         telegramUserId: userId,
         telegramUsername: message.from.username,
         chatId,
       });
     } else if (text === "/help") {
-      replyText = await handleHelpCommand();
+      reply = await handleHelpCommand();
     } else if (text === "/resume") {
-      replyText = await handleResumeCommand(userId, chatId);
+      reply = await handleResumeCommand(userId, chatId);
     } else if (text === "/finish") {
-      replyText = await handleFinishCommand(userId);
+      reply = await handleFinishCommand(userId);
     } else {
       await sendTelegramTyping(chatId);
 
@@ -90,7 +154,7 @@ export async function POST(request: Request) {
         try {
           const transcriptText = await transcribeTelegramVoice(message.voice.file_id);
 
-          replyText = await handleRespondentMessage({
+          reply = await handleRespondentMessage({
             chatId,
             telegramUserId: userId,
             telegramUsername: message.from.username,
@@ -111,11 +175,12 @@ export async function POST(request: Request) {
             error: error instanceof Error ? error.message : String(error),
           });
 
-          replyText =
-            "Не удалось распознать голосовое сообщение. Попробуйте отправить голос еще раз или ответьте текстом.";
+          reply = {
+            text: "Не удалось распознать голосовое сообщение. Попробуйте отправить голос ещё раз или ответьте текстом.",
+          };
         }
       } else {
-        replyText = await handleRespondentMessage({
+        reply = await handleRespondentMessage({
           chatId,
           telegramUserId: userId,
           telegramUsername: message.from.username,
@@ -123,14 +188,12 @@ export async function POST(request: Request) {
           text,
           transcriptText: text,
           messageType: "text",
-          metadata: {
-            languageCode: message.from.language_code,
-          },
+          metadata: { languageCode: message.from.language_code },
         });
       }
     }
 
-    await sendTelegramMessage(chatId, replyText);
+    await sendReply(chatId, reply);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

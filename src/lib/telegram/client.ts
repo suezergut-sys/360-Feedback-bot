@@ -1,6 +1,15 @@
 import { env, requireEnv } from "@/lib/env";
 import { logger } from "@/lib/logging/logger";
 
+export type InlineKeyboardButton = {
+  text: string;
+  callback_data: string;
+};
+
+export type InlineKeyboard = {
+  inline_keyboard: InlineKeyboardButton[][];
+};
+
 function getTelegramApiBase(): string {
   return `https://api.telegram.org/bot${requireEnv("TELEGRAM_BOT_TOKEN")}`;
 }
@@ -38,6 +47,52 @@ export async function sendTelegramMessage(chatId: number | string, text: string)
     chat_id: chatId,
     text,
   });
+}
+
+export async function sendTelegramMessageWithKeyboard(
+  chatId: number | string,
+  text: string,
+  keyboard: InlineKeyboard,
+): Promise<void> {
+  await telegramApiRequest("sendMessage", {
+    chat_id: chatId,
+    text,
+    reply_markup: keyboard,
+  });
+}
+
+export async function editTelegramMessageText(
+  chatId: number | string,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  try {
+    await telegramApiRequest("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+    });
+  } catch (error) {
+    logger.warn("Failed to edit telegram message", {
+      chatId,
+      messageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+  try {
+    await telegramApiRequest("answerCallbackQuery", {
+      callback_query_id: callbackQueryId,
+      text: text ?? "",
+    });
+  } catch (error) {
+    logger.warn("Failed to answer callback query", {
+      callbackQueryId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export async function sendTelegramTyping(chatId: number | string): Promise<void> {

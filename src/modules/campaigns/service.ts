@@ -1,6 +1,7 @@
 import { CampaignStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { campaignInputSchema, type CampaignInput } from "@/lib/validators/campaign";
+import { COMPETENCY_TEMPLATES } from "@/data/competency-templates";
 
 export async function listCampaigns(ownerAdminId: string) {
   return prisma.campaign.findMany({
@@ -42,6 +43,16 @@ export async function createCampaign(ownerAdminId: string, payload: CampaignInpu
     data: {
       ownerAdminId,
       ...data,
+      competencies: {
+        create: COMPETENCY_TEMPLATES.map((t) => ({
+          name: t.name,
+          description: t.description,
+          groupName: t.groupName,
+          priorityOrder: t.priorityOrder,
+          behavioralMarkers: [],
+          enabled: true,
+        })),
+      },
     },
   });
 }
@@ -135,6 +146,12 @@ export async function findCampaignByRespondentToken(token: string) {
         },
       },
     },
+  });
+}
+
+export async function deleteCampaign(campaignId: string, ownerAdminId: string) {
+  return prisma.campaign.deleteMany({
+    where: { id: campaignId, ownerAdminId },
   });
 }
 
