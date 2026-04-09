@@ -466,8 +466,13 @@ export async function handleStartCommand(params: {
 }): Promise<BotReply> {
   const inviteToken = normalizeInviteToken(params.inviteToken);
 
+  // No token: try to resume by known Telegram user ID
   if (!inviteToken || !isInviteTokenFormatValid(inviteToken)) {
-    return { text: INVITE_REQUIRED_TEXT };
+    const context = await loadContextByTelegramUser(params.telegramUserId);
+    if (!context) {
+      return { text: INVITE_REQUIRED_TEXT };
+    }
+    return sendConsentAndResetSession(context, params.chatId, null);
   }
 
   const context = await loadContextByToken(inviteToken);
@@ -491,12 +496,28 @@ export async function handleStartCommand(params: {
     });
   }
 
+  return sendConsentAndResetSession(context, params.chatId, inviteToken);
+}
+
+async function sendConsentAndResetSession(
+  context: ActiveCampaignContext,
+  chatId: number,
+  inviteToken: string | null,
+): Promise<BotReply> {
   const session = await ensureSession(context);
   const state = parseInterviewState(session.currentState);
 
   if (state.phase === "completed" || session.completedAt) {
     return { text: "Интервью уже завершено. Спасибо за участие." };
   }
+
+  // Always reset to consent so the "Начать" button works correctly
+  const resetState = createInitialInterviewState();
+  await setSessionState({
+    sessionId: session.id,
+    state: resetState,
+    currentCompetencyId: context.competencies[0]?.id ?? null,
+  });
 
   const consentMessage = [
     "Привет!",
@@ -513,14 +534,14 @@ export async function handleStartCommand(params: {
     competencyId: session.currentCompetencyId,
     senderType: SenderType.system,
     messageType: MessageType.system,
-    rawText: "Session started by /start command",
-    metadata: { chatId: params.chatId, inviteToken },
+    rawText: "Session reset by /start command",
+    metadata: { chatId, inviteToken },
   });
 
   await buildAndStoreAssistantQuestion({
     sessionId: session.id,
     competencyId: session.currentCompetencyId,
-    telegramChatId: params.chatId,
+    telegramChatId: chatId,
     text: consentMessage,
   });
 
