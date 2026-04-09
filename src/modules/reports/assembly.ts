@@ -134,10 +134,18 @@ export function classifyFeedback(fb: { strengthsText: string; growthAreasText: s
 
 type RespondentWithRole = Pick<Respondent, "id" | "displayName" | "role" | "position" | "department" | "status">;
 
-type FeedbackRow = Pick<
-  CompetencyFeedback,
-  "respondentId" | "competencyId" | "strengthsText" | "growthAreasText"
->;
+// Rating from button presses (1–5 or null = N/A)
+export type RatingRow = {
+  respondentId: string;
+  competencyId: string;
+  rating: number | null;
+};
+
+// Open question answer (competencyId = null messages)
+export type OpenAnswerRow = {
+  respondentId: string;
+  text: string;
+};
 
 type CompetencyRow = Pick<Competency, "id" | "name" | "description" | "groupName" | "priorityOrder" | "behavioralMarkers">;
 
@@ -149,16 +157,18 @@ export type VisualCompetencyData = {
   totalDevelopment: number;
   totalStrength: number;
   byRole: Record<RespondentRole, { development: number; strength: number; respondentCount: number }>;
-  comments: {
-    strengths: string[];
-    growth: string[];
-    byRole: Record<RespondentRole, { strengths: string[]; growth: string[] }>;
-  };
 };
 
 export type VisualReportGroup = {
   groupName: string;
   competencies: VisualCompetencyData[];
+};
+
+export type OpenAnswerEntry = {
+  respondentName: string;
+  role: RespondentRole;
+  // answers in order: strengths, growth, stop, other
+  answers: string[];
 };
 
 export type VisualReportData = {
@@ -167,13 +177,23 @@ export type VisualReportData = {
   competencyGroups: VisualReportGroup[];
   top5Development: Array<{ name: string; count: number }>;
   top5Strength: Array<{ name: string; count: number }>;
+  openQuestionAnswers: OpenAnswerEntry[];
 };
+
+// Classify a numeric rating into strength / development / neutral
+function classifyRating(rating: number | null): "strength" | "development" | "neutral" {
+  if (rating === null) return "neutral";
+  if (rating >= 4) return "strength";
+  if (rating <= 2) return "development";
+  return "neutral";
+}
 
 export function buildVisualReportData(
   subject: { name: string; title: string },
   competencies: CompetencyRow[],
   respondents: RespondentWithRole[],
-  allFeedback: FeedbackRow[],
+  allRatings: RatingRow[],
+  openAnswersByRespondent: Map<string, string[]>,
 ): VisualReportData {
   const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client"];
 
@@ -186,42 +206,21 @@ export function buildVisualReportData(
     client: { development: 0, strength: 0, respondentCount: 0 },
   });
 
-  const emptyCommentsByRole = (): Record<RespondentRole, { strengths: string[]; growth: string[] }> => ({
-    self: { strengths: [], growth: [] },
-    manager: { strengths: [], growth: [] },
-    colleague: { strengths: [], growth: [] },
-    client: { strengths: [], growth: [] },
-  });
-
   const sorted = [...competencies].sort((a, b) => a.priorityOrder - b.priorityOrder);
 
   const competencyDataList: VisualCompetencyData[] = sorted.map((comp) => {
-    const compFeedback = allFeedback.filter((f) => f.competencyId === comp.id);
+    const compRatings = allRatings.filter((r) => r.competencyId === comp.id);
     const byRole = emptyByRole();
-    const commentsByRole = emptyCommentsByRole();
-    const allStrengths: string[] = [];
-    const allGrowth: string[] = [];
 
-    for (const fb of compFeedback) {
-      const respondent = respondentById.get(fb.respondentId);
+    for (const ratingRow of compRatings) {
+      const respondent = respondentById.get(ratingRow.respondentId);
       if (!respondent) continue;
       const role = respondent.role as RespondentRole;
-      const classification = classifyFeedback(fb);
+      const classification = classifyRating(ratingRow.rating);
 
       byRole[role].respondentCount += 1;
-
-      if (classification === "strength" || classification === "both") {
-        byRole[role].strength += 1;
-        const lines = splitLines(fb.strengthsText);
-        commentsByRole[role].strengths.push(...lines);
-        allStrengths.push(...lines);
-      }
-      if (classification === "development" || classification === "both") {
-        byRole[role].development += 1;
-        const lines = splitLines(fb.growthAreasText);
-        commentsByRole[role].growth.push(...lines);
-        allGrowth.push(...lines);
-      }
+      if (classification === "strength") byRole[role].strength += 1;
+      if (classification === "development") byRole[role].development += 1;
     }
 
     const totalStrength = ALL_ROLES.reduce((s, r) => s + byRole[r].strength, 0);
@@ -239,11 +238,6 @@ export function buildVisualReportData(
       totalDevelopment,
       totalStrength,
       byRole,
-      comments: {
-        strengths: dedupe(allStrengths),
-        growth: dedupe(allGrowth),
-        byRole: commentsByRole,
-      },
     };
   });
 
@@ -282,12 +276,22 @@ export function buildVisualReportData(
     status: r.status,
   }));
 
+  // Open question answers grouped by respondent
+  const openQuestionAnswers: OpenAnswerEntry[] = respondents
+    .filter((r) => openAnswersByRespondent.has(r.id))
+    .map((r) => ({
+      respondentName: r.displayName ?? "Без имени",
+      role: r.role as RespondentRole,
+      answers: openAnswersByRespondent.get(r.id) ?? [],
+    }));
+
   return {
     subject: { name: subject.name, surveyTitle: subject.title },
     experts,
     competencyGroups,
     top5Development,
     top5Strength,
+    openQuestionAnswers,
   };
 }
 

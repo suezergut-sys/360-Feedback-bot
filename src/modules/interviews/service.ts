@@ -664,10 +664,14 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<Bo
   }
 
   // Always save the user's message first
+  // open_questions answers are not tied to a specific competency — use null so they
+  // don't pollute competency-level extraction and go to "Общие рекомендации" instead
   const currentCompetencyId =
     state.phase === "rating"
       ? (context.competencies[state.ratingIndex]?.id ?? null)
-      : (context.competencies[state.competencyIndex]?.id ?? null);
+      : state.phase === "open_questions"
+        ? null
+        : (context.competencies[state.competencyIndex]?.id ?? null);
 
   await saveMessage({
     sessionId: session.id,

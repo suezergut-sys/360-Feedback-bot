@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
 import { buildVisualReportData, type VisualCompetencyData, type RespondentRole } from "@/modules/reports/assembly";
+import { OPEN_QUESTIONS } from "@/modules/interviews/state";
 import { PrintButton } from "./PrintButton";
 
 const ROLE_LABELS: Record<RespondentRole, string> = {
@@ -35,7 +36,7 @@ export default async function VisualReportPage({
 
   if (!campaign) notFound();
 
-  const [competencies, respondents, feedback] = await Promise.all([
+  const [competencies, respondents, ratings, openMessages] = await Promise.all([
     prisma.competency.findMany({
       where: { campaignId: id, enabled: true },
       select: { id: true, name: true, description: true, groupName: true, priorityOrder: true, behavioralMarkers: true },
@@ -46,17 +47,43 @@ export default async function VisualReportPage({
       select: { id: true, displayName: true, role: true, position: true, department: true, status: true },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.competencyFeedback.findMany({
+    prisma.competencyRating.findMany({
       where: { campaignId: id },
-      select: { respondentId: true, competencyId: true, strengthsText: true, growthAreasText: true },
+      select: { respondentId: true, competencyId: true, rating: true },
+    }),
+    // Open question answers: respondent messages with no competencyId
+    prisma.message.findMany({
+      where: {
+        session: { campaignId: id },
+        senderType: "respondent",
+        competencyId: null,
+      },
+      select: {
+        session: { select: { respondentId: true } },
+        transcriptText: true,
+        rawText: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
+
+  // Group open messages by respondentId (in order = question index)
+  const openAnswersByRespondent = new Map<string, string[]>();
+  for (const msg of openMessages) {
+    const rid = msg.session.respondentId;
+    const text = (msg.transcriptText ?? msg.rawText ?? "").trim();
+    if (!text) continue;
+    if (!openAnswersByRespondent.has(rid)) openAnswersByRespondent.set(rid, []);
+    openAnswersByRespondent.get(rid)!.push(text);
+  }
 
   const data = buildVisualReportData(
     { name: campaign.subjectName, title: campaign.title },
     competencies,
     respondents,
-    feedback,
+    ratings,
+    openAnswersByRespondent,
   );
 
   const totalRespondents = respondents.length;
@@ -70,7 +97,7 @@ export default async function VisualReportPage({
     {} as Record<RespondentRole, typeof data.experts>,
   );
 
-  const hasFeedback = feedback.length > 0;
+  const hasData = ratings.length > 0;
 
   return (
     <>
@@ -203,17 +230,12 @@ export default async function VisualReportPage({
         .vr-top5-bar.dev { background: #f97316; }
         .vr-top5-bar.str { background: #22c55e; }
 
-        /* Comments */
-        .vr-comp-section { margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px; }
-        .vr-comp-section-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-        .vr-markers { margin-bottom: 10px; }
-        .vr-marker-item { font-size: 12px; color: #475569; padding: 2px 0 2px 12px; position: relative; }
-        .vr-marker-item::before { content: "•"; position: absolute; left: 0; color: #94a3b8; }
-        .vr-comment-block { margin-bottom: 8px; }
-        .vr-comment-type { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .vr-comment-type.str { color: #16a34a; }
-        .vr-comment-type.dev { color: #ea580c; }
-        .vr-comment-quote { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #e2e8f0; margin-bottom: 4px; font-style: italic; }
+        /* Open questions / recommendations */
+        .vr-reco-respondent { margin-bottom: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px; }
+        .vr-reco-name { font-size: 13px; font-weight: 700; margin-bottom: 10px; color: #1e293b; }
+        .vr-reco-qa { margin-bottom: 8px; }
+        .vr-reco-question { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #64748b; margin-bottom: 3px; }
+        .vr-reco-answer { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #3b82f6; font-style: italic; }
         .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
 
         @media print {
@@ -285,13 +307,13 @@ export default async function VisualReportPage({
           {data.experts.length === 0 && <div className="vr-empty">Респонденты не добавлены.</div>}
         </div>
 
-        {!hasFeedback && (
+        {!hasData && (
           <div style={{ padding: "32px", textAlign: "center", color: "#94a3b8", border: "1px dashed #e2e8f0", borderRadius: "8px", marginBottom: "32px" }}>
-            Данные обратной связи ещё не получены. Дождитесь завершения интервью и генерации отчётов.
+            Данные обратной связи ещё не получены. Дождитесь завершения интервью.
           </div>
         )}
 
-        {hasFeedback && (
+        {hasData && (
           <>
             {/* ── Section C: Feedback result bars ─────────────────────────── */}
             <div className="vr-section">
@@ -299,11 +321,11 @@ export default async function VisualReportPage({
               <div style={{ display: "flex", gap: "24px", marginBottom: "12px", fontSize: "11px", color: "#64748b" }}>
                 <span>
                   <span style={{ display: "inline-block", width: 10, height: 10, background: "#f97316", borderRadius: 2, marginRight: 4 }} />
-                  Зона для развития
+                  Зона для развития (оценка 1–2)
                 </span>
                 <span>
                   <span style={{ display: "inline-block", width: 10, height: 10, background: "#22c55e", borderRadius: 2, marginRight: 4 }} />
-                  Сильная сторона
+                  Сильная сторона (оценка 4–5)
                 </span>
               </div>
               {data.competencyGroups.map((group) => (
@@ -341,15 +363,27 @@ export default async function VisualReportPage({
               </div>
             </div>
 
-            {/* ── Section F: Comments ──────────────────────────────────────── */}
+            {/* ── Section F: Open question recommendations ─────────────────── */}
             <div className="vr-section">
-              <div className="vr-section-title">Комментарии к обратной связи</div>
-              {data.competencyGroups.map((group) => (
-                <div key={group.groupName}>
-                  <div className="vr-group-title">{group.groupName}</div>
-                  {group.competencies.map((comp) => (
-                    <CompetencyComments key={comp.id} comp={comp} />
-                  ))}
+              <div className="vr-section-title">Общие рекомендации</div>
+              {data.openQuestionAnswers.length === 0 && (
+                <div className="vr-no-data">Ответы на открытые вопросы не получены.</div>
+              )}
+              {data.openQuestionAnswers.map((entry, i) => (
+                <div key={i} className="vr-reco-respondent">
+                  <div className="vr-reco-name">
+                    {entry.respondentName}{" "}
+                    <span style={{ fontWeight: 400, color: "#64748b" }}>({ROLE_LABELS[entry.role]})</span>
+                  </div>
+                  {entry.answers.map((answer, qi) => {
+                    const q = OPEN_QUESTIONS[qi];
+                    return (
+                      <div key={qi} className="vr-reco-qa">
+                        <div className="vr-reco-question">{q ? q.heading.toUpperCase() : `ВОПРОС ${qi + 1}`}</div>
+                        <div className="vr-reco-answer">«{answer}»</div>
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -461,42 +495,3 @@ function Top5Chart({ title, items, type }: { title: string; items: { name: strin
     </div>
   );
 }
-
-function CompetencyComments({ comp }: { comp: VisualCompetencyData }) {
-  const hasAnyStrength = comp.comments.strengths.length > 0;
-  const hasAnyGrowth = comp.comments.growth.length > 0;
-
-  return (
-    <div className="vr-comp-section">
-      <div className="vr-comp-section-title">{comp.name}</div>
-      {comp.behavioralMarkers.length > 0 && (
-        <div className="vr-markers">
-          {comp.behavioralMarkers.map((m, i) => (
-            <div key={i} className="vr-marker-item">{m}</div>
-          ))}
-        </div>
-      )}
-      {hasAnyStrength && (
-        <div className="vr-comment-block">
-          <div className="vr-comment-type str">СИЛЬНАЯ СТОРОНА</div>
-          {comp.comments.strengths.map((s, i) => (
-            <div key={i} className="vr-comment-quote">«{s}»</div>
-          ))}
-        </div>
-      )}
-      {hasAnyGrowth && (
-        <div className="vr-comment-block">
-          <div className="vr-comment-type dev">ЗОНА ДЛЯ РАЗВИТИЯ</div>
-          {comp.comments.growth.map((g, i) => (
-            <div key={i} className="vr-comment-quote">«{g}»</div>
-          ))}
-        </div>
-      )}
-      {!hasAnyStrength && !hasAnyGrowth && (
-        <div className="vr-no-data">Комментарии не получены.</div>
-      )}
-    </div>
-  );
-}
-
-
