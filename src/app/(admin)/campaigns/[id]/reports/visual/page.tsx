@@ -11,9 +11,13 @@ const ROLE_LABELS: Record<RespondentRole, string> = {
   manager: "Руководитель",
   colleague: "Коллеги",
   client: "Клиенты",
+  employee: "Сотрудники",
 };
 
-const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client"];
+// Roles where individual names are hidden in the report (anonymised)
+const ANONYMOUS_ROLES: Set<RespondentRole> = new Set(["colleague", "client", "employee"]);
+
+const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
 
 export default async function VisualReportPage({
   params,
@@ -279,29 +283,32 @@ export default async function VisualReportPage({
           </div>
         </div>
 
-        {/* ── Section B: Experts ───────────────────────────────────────────── */}
+        {/* ── Section B: Respondents ───────────────────────────────────────── */}
         <div className="vr-section">
-          <div className="vr-section-title">Эксперты</div>
+          <div className="vr-section-title">Респонденты</div>
           {ALL_ROLES.map((role) => {
             const group = expertsByRole[role];
             if (group.length === 0) return null;
             const completed = group.filter((e) => e.status === "completed").length;
+            const isAnonymous = ANONYMOUS_ROLES.has(role);
             return (
               <div key={role} className="vr-experts-group">
                 <div className="vr-experts-group-header">
                   {ROLE_LABELS[role]} (оценили {completed} из {group.length})
                 </div>
-                <table className="vr-experts-table">
-                  <tbody>
-                    {group.map((expert, i) => (
-                      <tr key={i}>
-                        <td>{expert.displayName}</td>
-                        <td>{expert.department ?? "—"}</td>
-                        <td>{expert.position ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {!isAnonymous && (
+                  <table className="vr-experts-table">
+                    <tbody>
+                      {group.map((expert, i) => (
+                        <tr key={i}>
+                          <td>{expert.displayName}</td>
+                          <td>{expert.department ?? "—"}</td>
+                          <td>{expert.position ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             );
           })}
@@ -364,29 +371,26 @@ export default async function VisualReportPage({
               </div>
             </div>
 
-            {/* ── Section F: Open question recommendations ─────────────────── */}
+            {/* ── Section F: Open question recommendations by question ─────── */}
             <div className="vr-section">
               <div className="vr-section-title">Общие рекомендации</div>
               {data.openQuestionAnswers.length === 0 && (
                 <div className="vr-no-data">Ответы на открытые вопросы не получены.</div>
               )}
-              {data.openQuestionAnswers.map((entry, i) => (
-                <div key={i} className="vr-reco-respondent">
-                  <div className="vr-reco-name">
-                    {entry.respondentName}{" "}
-                    <span style={{ fontWeight: 400, color: "#64748b" }}>({ROLE_LABELS[entry.role]})</span>
+              {data.openQuestionAnswers.length > 0 && OPEN_QUESTIONS.map((q, qi) => {
+                const answers = data.openQuestionAnswers
+                  .map((entry) => entry.answers[qi])
+                  .filter(Boolean) as string[];
+                if (answers.length === 0) return null;
+                return (
+                  <div key={qi} className="vr-reco-respondent">
+                    <div className="vr-reco-name">{q.heading}</div>
+                    {answers.map((answer, ai) => (
+                      <div key={ai} className="vr-reco-answer">«{answer}»</div>
+                    ))}
                   </div>
-                  {entry.answers.map((answer, qi) => {
-                    const q = OPEN_QUESTIONS[qi];
-                    return (
-                      <div key={qi} className="vr-reco-qa">
-                        <div className="vr-reco-question">{q ? q.heading.toUpperCase() : `ВОПРОС ${qi + 1}`}</div>
-                        <div className="vr-reco-answer">«{answer}»</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

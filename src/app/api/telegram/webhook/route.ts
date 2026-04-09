@@ -6,6 +6,7 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 import { logger } from "@/lib/logging/logger";
 import {
   answerCallbackQuery,
+  deleteTelegramMessage,
   editTelegramMessageText,
   extractStartToken,
   sendTelegramMessage,
@@ -87,14 +88,18 @@ export async function POST(request: Request) {
         telegramUserId: userId,
         chatId,
         callbackData,
+        messageId,
       });
-
-      if (result.editText && messageId) {
-        await editTelegramMessageText(chatId, messageId, result.editText);
-      }
 
       if (result.reply) {
         await sendReply(chatId, result.reply);
+      }
+
+      // Delete the previous message with inline buttons after the next one is sent
+      if (result.deleteMessageId) {
+        await deleteTelegramMessage(chatId, result.deleteMessageId);
+      } else if (result.editText && messageId) {
+        await editTelegramMessageText(chatId, messageId, result.editText);
       }
     } catch (error) {
       logger.error("Callback query handler failed", {

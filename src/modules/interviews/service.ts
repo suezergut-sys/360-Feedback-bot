@@ -346,7 +346,8 @@ export async function handleRatingCallback(params: {
   telegramUserId: bigint;
   chatId: number;
   callbackData: string;
-}): Promise<{ editText: string; reply: BotReply | null }> {
+  messageId?: number;
+}): Promise<{ editText: string; deleteMessageId?: number; reply: BotReply | null }> {
   const [prefix, valueStr] = params.callbackData.split(":");
 
   if (!prefix) {
@@ -393,7 +394,8 @@ export async function handleRatingCallback(params: {
       respondentId: context.respondent.id,
     });
 
-    return { editText: "✅ Начинаем!", reply: { text: ratingMessage, keyboard: RATING_KEYBOARD } };
+    // Delete the consent message (it has the "Начать" button) after starting
+    return { editText: "", deleteMessageId: params.messageId, reply: { text: ratingMessage, keyboard: RATING_KEYBOARD } };
   }
 
   // ── Rating button ──────────────────────────────────────────────────────
@@ -412,7 +414,6 @@ export async function handleRatingCallback(params: {
   }
 
   const rating = valueStr === "na" ? null : parseInt(valueStr, 10);
-  const ratingLabel = valueStr === "na" ? "N/A" : valueStr;
 
   await prisma.competencyRating.upsert({
     where: {
@@ -430,7 +431,6 @@ export async function handleRatingCallback(params: {
     update: { rating },
   });
 
-  const editText = "";
   const nextRatingIndex = state.ratingIndex + 1;
 
   if (nextRatingIndex >= context.competencies.length) {
@@ -453,7 +453,7 @@ export async function handleRatingCallback(params: {
       respondentId: context.respondent.id,
     });
 
-    return { editText, reply: { text: message } };
+    return { editText: "", deleteMessageId: params.messageId, reply: { text: message } };
   }
 
   // Move to next competency rating
@@ -471,7 +471,7 @@ export async function handleRatingCallback(params: {
     text: message,
   });
 
-  return { editText, reply: { text: message, keyboard: RATING_KEYBOARD } };
+  return { editText: "", deleteMessageId: params.messageId, reply: { text: message, keyboard: RATING_KEYBOARD } };
 }
 
 // ── Command handlers ───────────────────────────────────────────────────────

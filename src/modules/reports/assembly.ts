@@ -119,7 +119,7 @@ export function overallReportToMarkdown(payload: {
 
 // ─── Visual report helpers ────────────────────────────────────────────────────
 
-export type RespondentRole = "self" | "manager" | "colleague" | "client";
+export type RespondentRole = "self" | "manager" | "colleague" | "client" | "employee";
 
 export type FeedbackClassification = "strength" | "development" | "both" | "none";
 
@@ -195,7 +195,7 @@ export function buildVisualReportData(
   allRatings: RatingRow[],
   openAnswersByRespondent: Map<string, string[]>,
 ): VisualReportData {
-  const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client"];
+  const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
 
   const respondentById = new Map(respondents.map((r) => [r.id, r]));
 
@@ -204,6 +204,7 @@ export function buildVisualReportData(
     manager: { development: 0, strength: 0, respondentCount: 0 },
     colleague: { development: 0, strength: 0, respondentCount: 0 },
     client: { development: 0, strength: 0, respondentCount: 0 },
+    employee: { development: 0, strength: 0, respondentCount: 0 },
   });
 
   const sorted = [...competencies].sort((a, b) => a.priorityOrder - b.priorityOrder);

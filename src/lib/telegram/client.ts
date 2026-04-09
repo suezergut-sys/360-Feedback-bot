@@ -95,6 +95,21 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
   }
 }
 
+export async function deleteTelegramMessage(chatId: number | string, messageId: number): Promise<void> {
+  try {
+    await telegramApiRequest("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  } catch (error) {
+    logger.warn("Failed to delete telegram message", {
+      chatId,
+      messageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function sendTelegramTyping(chatId: number | string): Promise<void> {
   try {
     await telegramApiRequest("sendChatAction", {

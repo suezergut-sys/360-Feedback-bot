@@ -9,9 +9,12 @@ const ROLE_LABELS: Record<RespondentRole, string> = {
   manager: "Руководитель",
   colleague: "Коллеги",
   client: "Клиенты",
+  employee: "Сотрудники",
 };
 
-const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client"];
+const ANONYMOUS_ROLES: Set<RespondentRole> = new Set(["colleague", "client", "employee"]);
+
+const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
 
 export async function GET(
   req: Request,
@@ -238,16 +241,17 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
   </div>
 
   <div class="vr-section">
-    <div class="vr-section-title">Эксперты</div>
+    <div class="vr-section-title">Респонденты</div>
     ${ALL_ROLES.map((role) => {
       const group = expertsByRole[role];
       if (group.length === 0) return "";
       const completed = group.filter((e) => e.status === "completed").length;
+      const isAnonymous = ANONYMOUS_ROLES.has(role);
       return `<div class="vr-experts-group">
         <div class="vr-experts-group-header">${esc(ROLE_LABELS[role])} (оценили ${completed} из ${group.length})</div>
-        <table class="vr-experts-table"><tbody>
+        ${!isAnonymous ? `<table class="vr-experts-table"><tbody>
           ${group.map((e) => `<tr><td>${esc(e.displayName)}</td><td>${esc(e.department) || "—"}</td><td>${esc(e.position) || "—"}</td></tr>`).join("")}
-        </tbody></table>
+        </tbody></table>` : ""}
       </div>`;
     }).join("")}
     ${data.experts.length === 0 ? '<div class="vr-empty">Респонденты не добавлены.</div>' : ""}
@@ -292,18 +296,16 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     <div class="vr-section-title">Общие рекомендации</div>
     ${data.openQuestionAnswers.length === 0
       ? '<div class="vr-no-data">Ответы на открытые вопросы не получены.</div>'
-      : data.openQuestionAnswers.map((entry) => `
-        <div class="vr-reco-respondent">
-          <div class="vr-reco-name">${esc(entry.respondentName)} <span style="font-weight:400;color:#64748b">(${esc(ROLE_LABELS[entry.role])})</span></div>
-          ${entry.answers.map((answer, qi) => {
-            const q = OPEN_QUESTIONS[qi];
-            return `<div class="vr-reco-qa">
-              <div class="vr-reco-question">${esc(q ? q.heading.toUpperCase() : `ВОПРОС ${qi + 1}`)}</div>
-              <div class="vr-reco-answer">«${esc(answer)}»</div>
-            </div>`;
-          }).join("")}
-        </div>
-      `).join("")}
+      : OPEN_QUESTIONS.map((q, qi) => {
+          const answers = data.openQuestionAnswers
+            .map((entry) => entry.answers[qi])
+            .filter(Boolean);
+          if (answers.length === 0) return "";
+          return `<div class="vr-reco-respondent">
+            <div class="vr-reco-name">${esc(q.heading)}</div>
+            ${answers.map((answer) => `<div class="vr-reco-answer">«${esc(answer as string)}»</div>`).join("")}
+          </div>`;
+        }).join("")}
   </div>
   `}
 

@@ -51,6 +51,7 @@ export default async function CampaignRespondentsPage({
             <option value="self">Самооценка</option>
             <option value="manager">Руководитель</option>
             <option value="client">Клиент</option>
+            <option value="employee">Сотрудник</option>
           </select>
 
           <label className="form-label" htmlFor="position">

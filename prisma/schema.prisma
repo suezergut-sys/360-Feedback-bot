@@ -51,6 +51,7 @@ enum RespondentRole {
   manager
   colleague
   client
+  employee
 }
 
 model Admin {
