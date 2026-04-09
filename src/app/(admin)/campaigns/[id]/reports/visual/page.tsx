@@ -51,12 +51,11 @@ export default async function VisualReportPage({
       where: { campaignId: id },
       select: { respondentId: true, competencyId: true, rating: true },
     }),
-    // Open question answers: respondent messages with no competencyId
+    // All respondent text messages — ratings go to CompetencyRating, so these are open Q answers
     prisma.message.findMany({
       where: {
         session: { campaignId: id },
         senderType: "respondent",
-        competencyId: null,
       },
       select: {
         session: { select: { respondentId: true } },
@@ -68,7 +67,9 @@ export default async function VisualReportPage({
     }),
   ]);
 
-  // Group open messages by respondentId (in order = question index)
+  // Group open messages by respondentId (in order = question index).
+  // Ratings are button presses stored in CompetencyRating, not Message —
+  // so all respondent messages here are open question answers.
   const openAnswersByRespondent = new Map<string, string[]>();
   for (const msg of openMessages) {
     const rid = msg.session.respondentId;

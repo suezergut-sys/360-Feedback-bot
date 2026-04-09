@@ -195,7 +195,7 @@ export default async function CampaignResponsesPage({
             {/* Open question answers */}
             {(() => {
               const openAnswers = messages
-                .filter((m) => m.senderType === "respondent" && m.competencyId === null)
+                .filter((m) => m.senderType === "respondent")
                 .map((m) => m.transcriptText ?? m.rawText ?? "")
                 .filter(Boolean);
 

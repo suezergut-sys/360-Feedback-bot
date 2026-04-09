@@ -60,7 +60,6 @@ export async function GET(
       where: {
         session: { campaignId: id },
         senderType: "respondent",
-        competencyId: null,
       },
       select: {
         session: { select: { respondentId: true } },
