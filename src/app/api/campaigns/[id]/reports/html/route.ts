@@ -14,9 +14,10 @@ const ROLE_LABELS: Record<RespondentRole, string> = {
 const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client"];
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const printMode = new URL(req.url).searchParams.get("print") === "1";
   const session = await getAdminSessionFromCookies();
   if (!session) {
     return new NextResponse("Unauthorized", { status: 401 });
@@ -108,17 +109,20 @@ export async function GET(
     totalRespondents,
     completedRespondents,
     hasData,
+    printMode,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
 
-  return new NextResponse(html, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "text/html; charset=utf-8",
+  };
+
+  if (!printMode) {
+    headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  }
+
+  return new NextResponse(html, { status: 200, headers });
 }
 
 // ─── HTML builder ────────────────────────────────────────────────────────────
@@ -140,6 +144,7 @@ function buildHtml({
   totalRespondents,
   completedRespondents,
   hasData,
+  printMode,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -148,6 +153,7 @@ function buildHtml({
   totalRespondents: number;
   completedRespondents: number;
   hasData: boolean;
+  printMode: boolean;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -211,8 +217,12 @@ function buildHtml({
   .vr-reco-answer { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #3b82f6; font-style: italic; }
   .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
   .vr-no-feedback { padding: 32px; text-align: center; color: #94a3b8; border: 1px dashed #e2e8f0; border-radius: 8px; margin-bottom: 32px; }
-  @media print { .vr-cover { page-break-after: always; } }
+  @media print {
+    .vr-cover { page-break-after: always; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
 </style>
+${printMode ? `<script>window.addEventListener("load", function(){ window.print(); });</script>` : ""}
 </head>
 <body>
 <div class="vr-page">
