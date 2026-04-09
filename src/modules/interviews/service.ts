@@ -107,7 +107,8 @@ export type InboundMessage = {
 
 // ── Message builders ───────────────────────────────────────────────────────
 
-function buildRatingMessage(competency: Competency, index: number, total: number, isFirst: boolean): string {
+function buildRatingMessage(competency: Competency, index: number, totalCompetencies: number, isFirst: boolean): string {
+  const totalSteps = totalCompetencies + OPEN_QUESTIONS.length;
   const parts: string[] = [];
 
   if (isFirst) {
@@ -123,7 +124,7 @@ function buildRatingMessage(competency: Competency, index: number, total: number
     );
   }
 
-  parts.push(`📊 Оценка ${index + 1} из ${total}`);
+  parts.push(`Шаг: ${index + 1}/${totalSteps}`);
   parts.push("");
   parts.push(competency.name);
 
@@ -136,13 +137,15 @@ function buildRatingMessage(competency: Competency, index: number, total: number
   return parts.join("\n");
 }
 
-function buildOpenQuestionMessage(index: number, isTransition: boolean): string {
+function buildOpenQuestionMessage(index: number, isTransition: boolean, totalCompetencies: number): string {
   const q = OPEN_QUESTIONS[index];
 
   if (!q) {
     return "";
   }
 
+  const totalSteps = totalCompetencies + OPEN_QUESTIONS.length;
+  const stepNumber = totalCompetencies + index + 1;
   const parts: string[] = [];
 
   if (isTransition) {
@@ -156,11 +159,8 @@ function buildOpenQuestionMessage(index: number, isTransition: boolean): string 
     );
   }
 
-  const label = q.optional
-    ? `💬 Вопрос ${index + 1} из ${OPEN_QUESTIONS.length} (необязательно)`
-    : `💬 Вопрос ${index + 1} из ${OPEN_QUESTIONS.length}`;
-
-  parts.push(label, "", q.heading, "", q.text);
+  const optionalSuffix = q.optional ? " (необязательно)" : "";
+  parts.push(`Шаг: ${stepNumber}/${totalSteps}${optionalSuffix}`, "", q.heading, "", q.text);
 
   return parts.join("\n");
 }
@@ -430,7 +430,7 @@ export async function handleRatingCallback(params: {
     update: { rating },
   });
 
-  const editText = `✅ ${state.ratingIndex + 1}/${context.competencies.length} ${currentCompetency.name}: ${ratingLabel}`;
+  const editText = "";
   const nextRatingIndex = state.ratingIndex + 1;
 
   if (nextRatingIndex >= context.competencies.length) {
@@ -439,7 +439,7 @@ export async function handleRatingCallback(params: {
 
     await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: null });
 
-    const message = buildOpenQuestionMessage(0, true);
+    const message = buildOpenQuestionMessage(0, true, context.competencies.length);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
@@ -603,7 +603,7 @@ export async function handleResumeCommand(telegramUserId: bigint, chatId: number
       return { text: "Все вопросы уже заданы. Для завершения напишите /finish." };
     }
 
-    return { text: buildOpenQuestionMessage(state.openQuestionIndex, false) };
+    return { text: buildOpenQuestionMessage(state.openQuestionIndex, false, context.competencies.length) };
   }
 
   // Legacy "interview" phase
@@ -746,7 +746,7 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<Bo
 
     await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: null });
 
-    const nextMessage = buildOpenQuestionMessage(nextIndex, false);
+    const nextMessage = buildOpenQuestionMessage(nextIndex, false, context.competencies.length);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
