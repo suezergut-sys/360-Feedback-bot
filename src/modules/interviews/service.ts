@@ -347,11 +347,12 @@ export async function handleRatingCallback(params: {
 
   // ── Consent button ─────────────────────────────────────────────────────
   if (prefix === "consent" && valueStr === "start") {
-    if (state.phase !== "consent") {
-      return { editText: "", reply: null };
+    if (state.phase === "completed" || session.completedAt) {
+      return { editText: "✅ Опрос уже завершён", reply: { text: "Интервью уже завершено. Спасибо за участие." } };
     }
 
-    const ratingState = withRatingStarted(state);
+    // Accept "Начать" regardless of current phase — user may be retrying from an old message
+    const ratingState = withRatingStarted(createInitialInterviewState());
     const firstCompetency = context.competencies[0];
 
     if (!firstCompetency) {
