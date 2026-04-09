@@ -226,7 +226,7 @@ export default async function VisualReportPage({
       {/* Sticky admin bar */}
       <div className="vr-no-print">
         <Link href={`/campaigns/${id}/reports`}>← Назад к отчётам</Link>
-        <PrintButton />
+        <PrintButton campaignId={id} />
         <span style={{ color: "#64748b", fontSize: "12px" }}>
           {completedRespondents} из {totalRespondents} экспертов завершили интервью
         </span>
