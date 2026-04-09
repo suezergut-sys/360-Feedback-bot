@@ -194,13 +194,30 @@ async function loadContextByToken(token: string): Promise<ActiveCampaignContext 
 }
 
 async function loadContextByTelegramUser(telegramUserId: bigint): Promise<ActiveCampaignContext | null> {
+  // Prefer the most recently active non-completed respondent in an active campaign.
+  // Using findFirst without ordering can return wrong records when a user
+  // has multiple respondent entries (different campaigns or test runs).
   const respondent = await prisma.respondent.findFirst({
-    where: { telegramUserId },
+    where: {
+      telegramUserId,
+      status: { not: RespondentStatus.completed },
+      campaign: { status: { in: [CampaignStatus.active, CampaignStatus.paused] } },
+    },
     include: { campaign: true },
+    orderBy: { updatedAt: "desc" },
   });
 
   if (!respondent) {
-    return null;
+    // Fall back to the most recently updated completed respondent
+    // (so the user still gets "already completed" feedback)
+    const completed = await prisma.respondent.findFirst({
+      where: { telegramUserId },
+      include: { campaign: true },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!completed) return null;
+    const competencies = await getEnabledCompetencies(completed.campaignId);
+    return { campaign: completed.campaign, respondent: completed, competencies };
   }
 
   const competencies = await getEnabledCompetencies(respondent.campaignId);
