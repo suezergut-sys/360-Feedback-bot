@@ -84,7 +84,7 @@ const HELP_TEXT = [
 ].join("\n");
 
 const INVITE_REQUIRED_TEXT =
-  "Для доступа к интервью нужен персональный инвайт. Откройте ссылку, которую вам отправил администратор.";
+  "Для доступа к интервью нужен персональный инвайт. Откройте ссылку, которую тебе отправил администратор.";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ function buildRatingMessage(competency: Competency, index: number, totalCompeten
 
   if (isFirst) {
     parts.push(
-      "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с вами.",
+      "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с тобой.",
       "Опирайтесь на реальные наблюдения за последние 3–6 месяцев.",
       "",
       "Шкала оценки:",
@@ -137,7 +137,12 @@ function buildRatingMessage(competency: Competency, index: number, totalCompeten
   return parts.join("\n");
 }
 
-function buildOpenQuestionMessage(index: number, isTransition: boolean, totalCompetencies: number): string {
+function buildOpenQuestionMessage(
+  index: number,
+  isTransition: boolean,
+  totalCompetencies: number,
+  subjectName: string,
+): string {
   const q = OPEN_QUESTIONS[index];
 
   if (!q) {
@@ -159,8 +164,9 @@ function buildOpenQuestionMessage(index: number, isTransition: boolean, totalCom
     );
   }
 
+  const text = q.text.replace(/\{subjectName\}/g, subjectName);
   const optionalSuffix = q.optional ? " (необязательно)" : "";
-  parts.push(`Шаг: ${stepNumber}/${totalSteps}${optionalSuffix}`, "", q.heading, "", q.text);
+  parts.push(`Шаг: ${stepNumber}/${totalSteps}${optionalSuffix}`, "", q.heading, "", text);
 
   return parts.join("\n");
 }
@@ -439,7 +445,7 @@ export async function handleRatingCallback(params: {
 
     await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: null });
 
-    const message = buildOpenQuestionMessage(0, true, context.competencies.length);
+    const message = buildOpenQuestionMessage(0, true, context.competencies.length, context.campaign.subjectName);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
@@ -603,7 +609,7 @@ export async function handleResumeCommand(telegramUserId: bigint, chatId: number
       return { text: "Все вопросы уже заданы. Для завершения напишите /finish." };
     }
 
-    return { text: buildOpenQuestionMessage(state.openQuestionIndex, false, context.competencies.length) };
+    return { text: buildOpenQuestionMessage(state.openQuestionIndex, false, context.competencies.length, context.campaign.subjectName) };
   }
 
   // Legacy "interview" phase
@@ -750,7 +756,7 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<Bo
 
     await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: null });
 
-    const nextMessage = buildOpenQuestionMessage(nextIndex, false, context.competencies.length);
+    const nextMessage = buildOpenQuestionMessage(nextIndex, false, context.competencies.length, context.campaign.subjectName);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
