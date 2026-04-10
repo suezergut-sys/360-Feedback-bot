@@ -162,6 +162,42 @@ export async function GET(
     {} as Record<RespondentRole, typeof data.experts>,
   );
 
+  // ── Quadrant scatter data (self vs others per competency) ─────────────────
+  const selfRespondentIds = new Set(respondents.filter((r) => r.role === "self").map((r) => r.id));
+  const othersRespondentIds = new Set(respondents.filter((r) => r.role !== "self").map((r) => r.id));
+
+  const scatterPoints = competencies.map((comp, idx) => {
+    const compRatings = ratings.filter((r) => r.competencyId === comp.id && r.rating !== null);
+    const selfVals = compRatings.filter((r) => selfRespondentIds.has(r.respondentId)).map((r) => r.rating as number);
+    const othersVals = compRatings.filter((r) => othersRespondentIds.has(r.respondentId)).map((r) => r.rating as number);
+    const selfAvg = selfVals.length === 0 ? null : Math.round((selfVals.reduce((a, b) => a + b, 0) / selfVals.length) * 100) / 100;
+    const othersAvg = othersVals.length === 0 ? null : Math.round((othersVals.reduce((a, b) => a + b, 0) / othersVals.length) * 100) / 100;
+    return { num: idx + 1, name: comp.name, selfAvg, othersAvg };
+  });
+
+  const allSelfVals = ratings.filter((r) => selfRespondentIds.has(r.respondentId) && r.rating !== null).map((r) => r.rating as number);
+  const allOthersVals = ratings.filter((r) => othersRespondentIds.has(r.respondentId) && r.rating !== null).map((r) => r.rating as number);
+  const selfThreshold = allSelfVals.length === 0 ? 3 : Math.round((allSelfVals.reduce((a, b) => a + b, 0) / allSelfVals.length) * 100) / 100;
+  const othersThreshold = allOthersVals.length === 0 ? 3 : Math.round((allOthersVals.reduce((a, b) => a + b, 0) / allOthersVals.length) * 100) / 100;
+
+  // Classify each point into a quadrant
+  type QuadrantKey = "obvious_strengths" | "hidden_strengths" | "blind_spot" | "obvious_dev";
+  const quadrantMap: Record<QuadrantKey, typeof scatterPoints> = {
+    obvious_strengths: [],
+    hidden_strengths: [],
+    blind_spot: [],
+    obvious_dev: [],
+  };
+  for (const pt of scatterPoints) {
+    if (pt.selfAvg === null || pt.othersAvg === null) continue;
+    if (pt.selfAvg >= selfThreshold && pt.othersAvg >= othersThreshold) quadrantMap.obvious_strengths.push(pt);
+    else if (pt.selfAvg < selfThreshold && pt.othersAvg >= othersThreshold) quadrantMap.hidden_strengths.push(pt);
+    else if (pt.selfAvg >= selfThreshold && pt.othersAvg < othersThreshold) quadrantMap.blind_spot.push(pt);
+    else quadrantMap.obvious_dev.push(pt);
+  }
+
+  const scatterData = { points: scatterPoints, selfThreshold, othersThreshold, quadrantMap };
+
   const html = buildHtml({
     campaign,
     data,
@@ -173,6 +209,7 @@ export async function GET(
     printMode,
     radarData,
     avgMatrix,
+    scatterData,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -211,6 +248,15 @@ function escJson(data: unknown): string {
   return JSON.stringify(data).replace(/<\/script>/gi, "<\\/script>");
 }
 
+type ScatterPoint = { num: number; name: string; selfAvg: number | null; othersAvg: number | null };
+type QuadrantKey = "obvious_strengths" | "hidden_strengths" | "blind_spot" | "obvious_dev";
+type ScatterData = {
+  points: ScatterPoint[];
+  selfThreshold: number;
+  othersThreshold: number;
+  quadrantMap: Record<QuadrantKey, ScatterPoint[]>;
+};
+
 function buildHtml({
   campaign,
   data,
@@ -222,6 +268,7 @@ function buildHtml({
   printMode,
   radarData,
   avgMatrix,
+  scatterData,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -233,6 +280,7 @@ function buildHtml({
   printMode: boolean;
   radarData: { labels: string[]; series: RadarSeries[]; grandAvg: number | null };
   avgMatrix: Map<string, Record<RespondentRole, number | null> & { overall: number | null }>;
+  scatterData: ScatterData;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -335,6 +383,19 @@ function buildHtml({
   .vr-avg-table td:first-child { padding: 8px 10px; border: 1px solid #e2e8f0; font-weight: 700; background: #1e293b; color: #fff; }
   .vr-avg-cell { padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 700; font-size: 14px; }
   .vr-avg-grand { background: #f0fdf4; color: #16a34a; }
+  .vr-quadrant-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
+  .vr-quadrant-sections { display: flex; flex-direction: column; gap: 0; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+  .vr-qs-row { display: grid; grid-template-columns: 1fr 1fr; }
+  .vr-qs-cell { padding: 14px 16px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+  .vr-qs-cell:last-child { border-right: none; }
+  .vr-qs-cell:nth-last-child(-n+2) { border-bottom: none; }
+  .vr-qs-header { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .vr-qs-header-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .vr-qs-desc { font-size: 11px; color: #475569; line-height: 1.5; margin-bottom: 10px; font-style: italic; }
+  .vr-qs-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+  .vr-qs-num { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .vr-qs-name { color: #1e293b; line-height: 1.4; }
+  .vr-qs-empty { font-size: 11px; color: #94a3b8; font-style: italic; }
   @media print {
     .vr-cover { page-break-after: always; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -479,6 +540,8 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     </div>
   </div>
 
+  ${renderQuadrantSection(scatterData)}
+
   <div class="vr-section">
     <div class="vr-section-title">Общие рекомендации</div>
     ${data.openQuestionAnswers.length === 0
@@ -573,6 +636,197 @@ function renderGroupMatrix(
       }).join("")}
     </tbody>
   </table>`;
+}
+
+const QUADRANT_CONFIG: Record<QuadrantKey, { title: string; desc: string; color: string; bg: string }> = {
+  obvious_strengths: {
+    title: "Очевидные сильные стороны",
+    desc: "В этой зоне перечислены компетенции, которыми Вы владеете. В этом уверены и Вы сами, и Ваши коллеги. Эти компетенции можно дальше совершенствовать.",
+    color: "#16a34a",
+    bg: "#dcfce7",
+  },
+  hidden_strengths: {
+    title: "Не очевидные сильные стороны",
+    desc: "Эту часть условно можно назвать зоной «скромности»: это значит, что окружающие оценили данные компетенции выше, чем Вы сами. Развивать ли перечисленные компетенции — Ваш выбор, но коллеги уверены, что Вы ими уже вполне владеете.",
+    color: "#2563eb",
+    bg: "#dbeafe",
+  },
+  blind_spot: {
+    title: "Не очевидные потребности в развитии («Слепое пятно»)",
+    desc: "В этой зоне находятся компетенции, которые Вы сами высоко оцениваете, однако окружающие считают их зонами для развития. Стоит запросить дополнительную обратную связь по этим компетенциям.",
+    color: "#d97706",
+    bg: "#fef3c7",
+  },
+  obvious_dev: {
+    title: "Очевидные потребности в развитии",
+    desc: "Эта зона отражает компетенции, которые развиты у Вас недостаточно. Это считается как Вы сами, так и окружающие. Вам необходимо особо сосредоточиться на развитии данных компетенций.",
+    color: "#dc2626",
+    bg: "#fee2e2",
+  },
+};
+
+const QUADRANT_DRAW_ORDER: QuadrantKey[] = ["obvious_strengths", "hidden_strengths", "blind_spot", "obvious_dev"];
+
+function renderQuadrantSection(scatterData: ScatterData): string {
+  const { points, selfThreshold, othersThreshold, quadrantMap } = scatterData;
+  const hasPoints = points.some((p) => p.selfAvg !== null && p.othersAvg !== null);
+
+  // Build Chart.js datasets — one per quadrant for coloring
+  const datasetsJson = escJson(
+    QUADRANT_DRAW_ORDER.map((key) => {
+      const cfg = QUADRANT_CONFIG[key];
+      return {
+        label: cfg.title,
+        data: quadrantMap[key]
+          .filter((p) => p.selfAvg !== null && p.othersAvg !== null)
+          .map((p) => ({ x: p.selfAvg, y: p.othersAvg, num: p.num })),
+        backgroundColor: cfg.color,
+        borderColor: cfg.color,
+        pointRadius: 14,
+        pointHoverRadius: 16,
+      };
+    }),
+  );
+
+  const quadrantCells = (
+    [
+      ["hidden_strengths", "obvious_strengths"],
+      ["obvious_dev", "blind_spot"],
+    ] as QuadrantKey[][]
+  )
+    .map((row) => {
+      const cells = row
+        .map((key) => {
+          const cfg = QUADRANT_CONFIG[key];
+          const items = quadrantMap[key];
+          return `<div class="vr-qs-cell">
+          <div class="vr-qs-header">
+            <span class="vr-qs-header-dot" style="background:${cfg.color}"></span>
+            <span style="color:${cfg.color}">${esc(cfg.title)}</span>
+          </div>
+          <div class="vr-qs-desc">${esc(cfg.desc)}</div>
+          ${
+            items.length === 0
+              ? `<div class="vr-qs-empty">Сюда не попала ни одна компетенция</div>`
+              : items
+                  .map(
+                    (p) => `<div class="vr-qs-item">
+              <span class="vr-qs-num" style="background:${cfg.color}">${p.num}</span>
+              <span class="vr-qs-name">${esc(p.name)}</span>
+            </div>`,
+                  )
+                  .join("")
+          }
+        </div>`;
+        })
+        .join("");
+      return `<div class="vr-qs-row">${cells}</div>`;
+    })
+    .join("");
+
+  return `<div class="vr-section">
+    <div class="vr-section-title">Сильные стороны / потребности в развитии</div>
+    ${!hasPoints ? `<div class="vr-no-data">Недостаточно данных для построения диаграммы.</div>` : `
+    <div class="vr-quadrant-wrap">
+      <canvas id="quadrantChart" width="520" height="480"></canvas>
+    </div>
+    <script>
+    (function() {
+      var datasets = ${datasetsJson};
+      var selfThreshold = ${selfThreshold};
+      var othersThreshold = ${othersThreshold};
+
+      var quadrantPlugin = {
+        id: 'quadrantLines',
+        afterDraw: function(chart) {
+          var ctx = chart.ctx;
+          var xs = chart.scales.x;
+          var ys = chart.scales.y;
+          var xMid = xs.getPixelForValue(selfThreshold);
+          var yMid = ys.getPixelForValue(othersThreshold);
+
+          ctx.save();
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(xMid, ys.top); ctx.lineTo(xMid, ys.bottom); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(xs.left, yMid); ctx.lineTo(xs.right, yMid); ctx.stroke();
+          ctx.restore();
+
+          // Quadrant corner labels
+          ctx.save();
+          ctx.font = '9px Arial';
+          ctx.fillStyle = '#94a3b8';
+          var pad = 6;
+          ctx.textAlign = 'left';  ctx.textBaseline = 'top';    ctx.fillText('Не очевидные', xs.left + pad, ys.top + pad);
+          ctx.fillText('сильные стороны', xs.left + pad, ys.top + pad + 12);
+          ctx.textAlign = 'right'; ctx.textBaseline = 'top';    ctx.fillText('Очевидные', xs.right - pad, ys.top + pad);
+          ctx.fillText('сильные стороны', xs.right - pad, ys.top + pad + 12);
+          ctx.textAlign = 'left';  ctx.textBaseline = 'bottom'; ctx.fillText('Очевидные', xs.left + pad, ys.bottom - pad - 12);
+          ctx.fillText('потребности в развитии', xs.left + pad, ys.bottom - pad);
+          ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText('Не очевидные', xs.right - pad, ys.bottom - pad - 12);
+          ctx.fillText('потребности в развитии', xs.right - pad, ys.bottom - pad);
+          ctx.restore();
+
+          // Draw numbers on each dot
+          datasets.forEach(function(ds, di) {
+            ds.data.forEach(function(pt) {
+              var px = xs.getPixelForValue(pt.x);
+              var py = ys.getPixelForValue(pt.y);
+              ctx.save();
+              ctx.fillStyle = '#fff';
+              ctx.font = 'bold 10px Arial';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(String(pt.num), px, py);
+              ctx.restore();
+            });
+          });
+        }
+      };
+
+      var ctx = document.getElementById('quadrantChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets: datasets },
+        options: {
+          responsive: false,
+          scales: {
+            x: {
+              min: 1, max: 5,
+              title: { display: true, text: 'Самооценка', font: { size: 12 } },
+              ticks: { stepSize: 0.5, font: { size: 10 } },
+              grid: { color: '#f1f5f9' }
+            },
+            y: {
+              min: 1, max: 5,
+              title: { display: true, text: 'Другие', font: { size: 12 } },
+              ticks: { stepSize: 0.5, font: { size: 10 } },
+              grid: { color: '#f1f5f9' }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function() { return ''; },
+                label: function(ctx) {
+                  var pt = ctx.raw;
+                  return pt.num + '. Самооценка: ' + pt.x.toFixed(2) + ' / Другие: ' + pt.y.toFixed(2);
+                }
+              }
+            }
+          }
+        },
+        plugins: [quadrantPlugin]
+      });
+    })();
+    </script>
+    <div class="vr-quadrant-sections">
+      ${quadrantCells}
+    </div>
+    `}
+  </div>`;
 }
 
 function renderTop5(title: string, items: { name: string; count: number }[], type: "dev" | "str"): string {
