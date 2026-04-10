@@ -372,10 +372,28 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     (function() {
       var labels = ${escJson(radarData.labels)};
       var datasets = ${escJson(chartDatasets)};
+
+      // Store original values for tooltips
+      var origData = datasets.map(function(ds) { return ds.data.slice(); });
+
+      // Offset overlapping values so parallel lines stay visible (touch but don't hide each other)
+      var OVERLAP_OFFSET = 0.06;
+      var processed = datasets.map(function(ds, di) {
+        var newData = ds.data.map(function(val, vi) {
+          if (val === 0) return 0;
+          var offset = 0;
+          for (var pi = 0; pi < di; pi++) {
+            if (Math.abs(origData[pi][vi] - val) < 0.01) offset += OVERLAP_OFFSET;
+          }
+          return Math.min(5, val + offset);
+        });
+        return Object.assign({}, ds, { data: newData });
+      });
+
       var ctx = document.getElementById('radarChart').getContext('2d');
       new Chart(ctx, {
         type: 'radar',
-        data: { labels: labels, datasets: datasets },
+        data: { labels: labels, datasets: processed },
         options: {
           responsive: false,
           layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
@@ -407,6 +425,14 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
             }
           },
           plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  var orig = origData[context.datasetIndex][context.dataIndex];
+                  return context.dataset.label + ': ' + orig.toFixed(2);
+                }
+              }
+            },
             legend: {
               position: 'right',
               labels: { font: { size: 12 }, padding: 16, usePointStyle: true }
