@@ -136,6 +136,24 @@ export async function GET(
 
   const radarData = { labels: radarLabels, series: radarSeries, grandAvg };
 
+  // ── Average ratings matrix: competencyId → role → avg ────────────────────
+  const respondentById = new Map(respondents.map((r) => [r.id, r]));
+  type AvgMatrix = Map<string, Record<RespondentRole, number | null> & { overall: number | null }>;
+  const avgMatrix: AvgMatrix = new Map();
+  for (const comp of competencies) {
+    const compRatings = ratings.filter((r) => r.competencyId === comp.id && r.rating !== null);
+    const byRole = {} as Record<RespondentRole, number | null> & { overall: number | null };
+    for (const role of ALL_ROLES) {
+      const vals = compRatings
+        .filter((r) => respondentById.get(r.respondentId)?.role === role)
+        .map((r) => r.rating as number);
+      byRole[role] = vals.length === 0 ? null : Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100;
+    }
+    const allVals = compRatings.map((r) => r.rating as number);
+    byRole.overall = allVals.length === 0 ? null : Math.round((allVals.reduce((a, b) => a + b, 0) / allVals.length) * 100) / 100;
+    avgMatrix.set(comp.id, byRole);
+  }
+
   const expertsByRole = ALL_ROLES.reduce(
     (acc, role) => {
       acc[role] = data.experts.filter((e) => e.role === role);
@@ -154,6 +172,7 @@ export async function GET(
     hasData,
     printMode,
     radarData,
+    avgMatrix,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -202,6 +221,7 @@ function buildHtml({
   hasData,
   printMode,
   radarData,
+  avgMatrix,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -212,6 +232,7 @@ function buildHtml({
   hasData: boolean;
   printMode: boolean;
   radarData: { labels: string[]; series: RadarSeries[]; grandAvg: number | null };
+  avgMatrix: Map<string, Record<RespondentRole, number | null> & { overall: number | null }>;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -444,14 +465,9 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     </script>
     ` : ""}
 
-    <div class="vr-legend">
-      <span><span class="vr-badge-dev">1</span> — зона для развития</span>
-      <span><span class="vr-badge-str">1</span> — сильная сторона</span>
-      <span><span class="vr-dash">—</span> — не выбрано</span>
-    </div>
     ${data.competencyGroups.map((group) => `
       <div class="vr-group-title">${esc(group.groupName)}</div>
-      ${renderGroupMatrix(group.competencies, respondents)}
+      ${renderGroupMatrix(group.competencies, respondents, avgMatrix)}
     `).join("")}
   </div>
 
@@ -505,9 +521,24 @@ function renderCompetencyBar(comp: VisualCompetencyData): string {
   </div>`;
 }
 
+function avgCellStyle(value: number, overall: number): string {
+  const diff = value - overall;
+  if (diff >= 0) {
+    // at or above average — green
+    return "background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;display:inline-block;font-weight:600;";
+  } else if (diff >= -2) {
+    // below average but within 2 — orange
+    return "background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:4px;padding:2px 8px;display:inline-block;font-weight:600;";
+  } else {
+    // below average by more than 2 — red
+    return "background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:4px;padding:2px 8px;display:inline-block;font-weight:600;";
+  }
+}
+
 function renderGroupMatrix(
   competencies: VisualCompetencyData[],
   respondents: { role: string; status: string }[],
+  avgMatrix: Map<string, Record<RespondentRole, number | null> & { overall: number | null }>,
 ): string {
   const roleCounts = ALL_ROLES.reduce(
     (acc, role) => {
@@ -522,20 +553,24 @@ function renderGroupMatrix(
       <tr>
         <th>Компетенция</th>
         ${ALL_ROLES.map((role) => `<th>${esc(ROLE_LABELS[role])}<br><span style="font-weight:400;font-size:10px">${roleCounts[role]} чел.</span></th>`).join("")}
+        <th>Средняя</th>
       </tr>
     </thead>
     <tbody>
-      ${competencies.map((comp) => `<tr>
-        <td>${esc(comp.name)}</td>
-        ${ALL_ROLES.map((role) => {
-          const { development, strength, respondentCount } = comp.byRole[role];
-          if (respondentCount === 0) return `<td><span class="vr-dash">—</span></td>`;
-          const hasDev = development > 0;
-          const hasStr = strength > 0;
-          if (!hasDev && !hasStr) return `<td><span class="vr-dash">—</span></td>`;
-          return `<td>${hasDev ? `<span class="vr-badge-dev">${development}</span>` : ""}${hasDev && hasStr ? " " : ""}${hasStr ? `<span class="vr-badge-str">${strength}</span>` : ""}</td>`;
-        }).join("")}
-      </tr>`).join("")}
+      ${competencies.map((comp) => {
+        const avgs = avgMatrix.get(comp.id);
+        const overall = avgs?.overall ?? null;
+        return `<tr>
+          <td>${esc(comp.name)}</td>
+          ${ALL_ROLES.map((role) => {
+            const val = avgs?.[role] ?? null;
+            if (val === null) return `<td><span class="vr-dash">—</span></td>`;
+            const style = overall !== null ? avgCellStyle(val, overall) : "font-weight:600;";
+            return `<td><span style="${style}">${val.toFixed(2)}</span></td>`;
+          }).join("")}
+          <td style="text-align:center">${overall !== null ? `<strong>${overall.toFixed(2)}</strong>` : `<span class="vr-dash">—</span>`}</td>
+        </tr>`;
+      }).join("")}
     </tbody>
   </table>`;
 }
