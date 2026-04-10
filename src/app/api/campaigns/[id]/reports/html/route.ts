@@ -223,17 +223,7 @@ function buildHtml({
     return `<td class="vr-resp-cell">${completed}/${group.length}</td>`;
   }).join("");
 
-  // Named respondents (non-anonymous only)
-  const namedGroups = ALL_ROLES.filter((role) => !ANONYMOUS_ROLES.has(role) && expertsByRole[role].length > 0)
-    .map((role) => {
-      const group = expertsByRole[role];
-      return `<div class="vr-experts-group">
-        <div class="vr-experts-group-header">${esc(ROLE_LABELS[role])}</div>
-        <table class="vr-experts-table"><tbody>
-          ${group.map((e) => `<tr><td>${esc(e.displayName)}</td><td>${esc(e.department) || "—"}</td><td>${esc(e.position) || "—"}</td></tr>`).join("")}
-        </tbody></table>
-      </div>`;
-    }).join("");
+  // Named respondents removed — only summary table is shown
 
   // Radar chart datasets JSON
   const chartDatasets = radarData.series.map((s) => ({
@@ -318,7 +308,7 @@ function buildHtml({
   .vr-reco-answer { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #3b82f6; font-style: italic; }
   .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
   .vr-no-feedback { padding: 32px; text-align: center; color: #94a3b8; border: 1px dashed #e2e8f0; border-radius: 8px; margin-bottom: 32px; }
-  .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
+  .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 8px; }
   .vr-avg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
   .vr-avg-table th { padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; text-align: center; }
   .vr-avg-table td:first-child { padding: 8px 10px; border: 1px solid #e2e8f0; font-weight: 700; background: #1e293b; color: #fff; }
@@ -354,7 +344,6 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
       </tr></thead>
       <tbody><tr>${respondentsSummaryRow}</tr></tbody>
     </table>
-    ${namedGroups}
     `}
   </div>
 
@@ -365,7 +354,7 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 
     ${radarData.series.length > 0 ? `
     <div class="vr-radar-wrap">
-      <canvas id="radarChart" width="600" height="520"></canvas>
+      <canvas id="radarChart" width="760" height="600"></canvas>
     </div>
     <table class="vr-avg-table">
       <thead><tr>
@@ -389,11 +378,30 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
         data: { labels: labels, datasets: datasets },
         options: {
           responsive: false,
+          layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
           scales: {
             r: {
               min: 0, max: 5,
               ticks: { stepSize: 0.5, font: { size: 10 }, backdropColor: 'transparent' },
-              pointLabels: { font: { size: 11 } },
+              pointLabels: {
+                font: { size: 11 },
+                callback: function(label) {
+                  var words = label.split(' ');
+                  var lines = [];
+                  var line = '';
+                  for (var i = 0; i < words.length; i++) {
+                    var test = line ? line + ' ' + words[i] : words[i];
+                    if (test.length > 18 && line) {
+                      lines.push(line);
+                      line = words[i];
+                    } else {
+                      line = test;
+                    }
+                  }
+                  if (line) lines.push(line);
+                  return lines;
+                }
+              },
               grid: { color: '#e2e8f0' },
               angleLines: { color: '#e2e8f0' }
             }
@@ -418,18 +426,6 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     ${data.competencyGroups.map((group) => `
       <div class="vr-group-title">${esc(group.groupName)}</div>
       ${renderGroupMatrix(group.competencies, respondents)}
-    `).join("")}
-  </div>
-
-  <div class="vr-section">
-    <div class="vr-section-title">Результаты обратной связи</div>
-    <div class="vr-legend">
-      <span><span class="vr-legend-dot" style="background:#f97316"></span>Зона для развития (оценка 1–2)</span>
-      <span><span class="vr-legend-dot" style="background:#22c55e"></span>Сильная сторона (оценка 4–5)</span>
-    </div>
-    ${data.competencyGroups.map((group) => `
-      <div class="vr-group-title">${esc(group.groupName)}</div>
-      ${group.competencies.map((comp) => renderCompetencyBar(comp)).join("")}
     `).join("")}
   </div>
 
