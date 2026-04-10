@@ -12,6 +12,14 @@ const ROLE_LABELS: Record<RespondentRole, string> = {
   employee: "Сотрудники",
 };
 
+const ROLE_COLORS: Record<RespondentRole, string> = {
+  self: "#3b82f6",
+  manager: "#22c55e",
+  colleague: "#a855f7",
+  employee: "#ef4444",
+  client: "#f97316",
+};
+
 const ANONYMOUS_ROLES: Set<RespondentRole> = new Set(["colleague", "client", "employee"]);
 
 const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
@@ -98,6 +106,36 @@ export async function GET(
   const completedRespondents = respondents.filter((r) => r.status === "completed").length;
   const hasData = ratings.length > 0;
 
+  // ── Radar chart data ──────────────────────────────────────────────────────
+  const radarLabels = competencies.map((c) => c.name);
+
+  const radarSeries = ALL_ROLES.flatMap((role) => {
+    const roleRespondents = respondents.filter((r) => r.role === role);
+    if (roleRespondents.length === 0) return [];
+    const roleIds = new Set(roleRespondents.map((r) => r.id));
+    const roleRatings = ratings.filter((r) => roleIds.has(r.respondentId) && r.rating !== null);
+    if (roleRatings.length === 0) return [];
+
+    const values = competencies.map((comp) => {
+      const compRatings = roleRatings.filter((r) => r.competencyId === comp.id).map((r) => r.rating as number);
+      if (compRatings.length === 0) return null;
+      return Math.round((compRatings.reduce((a, b) => a + b, 0) / compRatings.length) * 100) / 100;
+    });
+
+    const nonNull = values.filter((v): v is number => v !== null);
+    const overallAvg = nonNull.length === 0 ? null : Math.round((nonNull.reduce((a, b) => a + b, 0) / nonNull.length) * 100) / 100;
+
+    return [{ role, label: ROLE_LABELS[role], color: ROLE_COLORS[role], values, overallAvg }];
+  });
+
+  const allNumericRatings = ratings.filter((r) => r.rating !== null).map((r) => r.rating as number);
+  const grandAvg =
+    allNumericRatings.length === 0
+      ? null
+      : Math.round((allNumericRatings.reduce((a, b) => a + b, 0) / allNumericRatings.length) * 100) / 100;
+
+  const radarData = { labels: radarLabels, series: radarSeries, grandAvg };
+
   const expertsByRole = ALL_ROLES.reduce(
     (acc, role) => {
       acc[role] = data.experts.filter((e) => e.role === role);
@@ -115,6 +153,7 @@ export async function GET(
     completedRespondents,
     hasData,
     printMode,
+    radarData,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -141,6 +180,18 @@ function esc(str: string | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
+type RadarSeries = {
+  role: RespondentRole;
+  label: string;
+  color: string;
+  values: (number | null)[];
+  overallAvg: number | null;
+};
+
+function escJson(data: unknown): string {
+  return JSON.stringify(data).replace(/<\/script>/gi, "<\\/script>");
+}
+
 function buildHtml({
   campaign,
   data,
@@ -150,6 +201,7 @@ function buildHtml({
   completedRespondents,
   hasData,
   printMode,
+  radarData,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -159,8 +211,46 @@ function buildHtml({
   completedRespondents: number;
   hasData: boolean;
   printMode: boolean;
+  radarData: { labels: string[]; series: RadarSeries[]; grandAvg: number | null };
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
+
+  // Respondents summary table
+  const respondentsSummaryRow = ALL_ROLES.map((role) => {
+    const group = expertsByRole[role];
+    if (group.length === 0) return `<td class="vr-resp-cell vr-resp-empty">—</td>`;
+    const completed = group.filter((e) => e.status === "completed").length;
+    return `<td class="vr-resp-cell">${completed}/${group.length}</td>`;
+  }).join("");
+
+  // Named respondents (non-anonymous only)
+  const namedGroups = ALL_ROLES.filter((role) => !ANONYMOUS_ROLES.has(role) && expertsByRole[role].length > 0)
+    .map((role) => {
+      const group = expertsByRole[role];
+      return `<div class="vr-experts-group">
+        <div class="vr-experts-group-header">${esc(ROLE_LABELS[role])}</div>
+        <table class="vr-experts-table"><tbody>
+          ${group.map((e) => `<tr><td>${esc(e.displayName)}</td><td>${esc(e.department) || "—"}</td><td>${esc(e.position) || "—"}</td></tr>`).join("")}
+        </tbody></table>
+      </div>`;
+    }).join("");
+
+  // Radar chart datasets JSON
+  const chartDatasets = radarData.series.map((s) => ({
+    label: s.label,
+    data: s.values.map((v) => v ?? 0),
+    borderColor: s.color,
+    backgroundColor: s.color + "1a",
+    pointBackgroundColor: s.color,
+    pointRadius: 4,
+    borderWidth: 2,
+  }));
+
+  // Averages table row
+  const avgRow = radarData.series
+    .map((s) => `<td class="vr-avg-cell">${s.overallAvg !== null ? s.overallAvg.toFixed(2) : "—"}</td>`)
+    .join("");
+  const avgHeaders = radarData.series.map((s) => `<th>${esc(s.label)}</th>`).join("");
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -168,12 +258,14 @@ function buildHtml({
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Отчёт — ${esc(campaign.subjectName)}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
   .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
-  .vr-cover-title { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .vr-cover-eyebrow { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .vr-cover-title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #1e293b; margin-bottom: 16px; }
   .vr-cover-name { font-size: 28px; font-weight: 700; margin-bottom: 20px; }
   .vr-cover-meta { display: grid; gap: 6px; font-size: 13px; }
   .vr-cover-meta-row { display: flex; gap: 16px; justify-content: center; }
@@ -186,6 +278,10 @@ function buildHtml({
   .vr-experts-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .vr-experts-table td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
   .vr-experts-table td:first-child { font-weight: 600; width: 220px; }
+  .vr-resp-summary { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+  .vr-resp-summary th { padding: 8px 12px; background: #f8fafc; font-weight: 600; border: 1px solid #e2e8f0; text-align: center; }
+  .vr-resp-cell { padding: 10px 12px; border: 1px solid #e2e8f0; text-align: center; font-size: 14px; font-weight: 600; }
+  .vr-resp-empty { color: #cbd5e1; font-weight: 400; }
   .vr-empty { color: #94a3b8; font-size: 12px; padding: 8px 0; font-style: italic; }
   .vr-comp-row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #f1f5f9; gap: 12px; }
   .vr-comp-name { width: 260px; flex-shrink: 0; font-size: 12px; font-weight: 500; }
@@ -222,6 +318,12 @@ function buildHtml({
   .vr-reco-answer { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #3b82f6; font-style: italic; }
   .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
   .vr-no-feedback { padding: 32px; text-align: center; color: #94a3b8; border: 1px dashed #e2e8f0; border-radius: 8px; margin-bottom: 32px; }
+  .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
+  .vr-avg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+  .vr-avg-table th { padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; text-align: center; }
+  .vr-avg-table td:first-child { padding: 8px 10px; border: 1px solid #e2e8f0; font-weight: 700; background: #1e293b; color: #fff; }
+  .vr-avg-cell { padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 700; font-size: 14px; }
+  .vr-avg-grand { background: #f0fdf4; color: #16a34a; }
   @media print {
     .vr-cover { page-break-after: always; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -233,33 +335,91 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 <div class="vr-page">
 
   <div class="vr-cover">
-    <div class="vr-cover-title">Отчёт по результатам</div>
+    <div class="vr-cover-eyebrow">Оценка персонала</div>
+    <div class="vr-cover-title">Отчёт по результатам оценки 360°</div>
     <div class="vr-cover-name">${esc(campaign.subjectName)}</div>
     <div class="vr-cover-meta">
       <div class="vr-cover-meta-row"><span><strong>Наименование опроса:</strong> ${esc(campaign.title)}</span></div>
       <div class="vr-cover-meta-row"><span><strong>Дата формирования:</strong> ${esc(dateStr)}</span></div>
-      <div class="vr-cover-meta-row"><span><strong>Экспертов завершили:</strong> ${completedRespondents} из ${totalRespondents}</span></div>
+      <div class="vr-cover-meta-row"><span><strong>Респондентов завершили:</strong> ${completedRespondents} из ${totalRespondents}</span></div>
     </div>
   </div>
 
   <div class="vr-section">
     <div class="vr-section-title">Респонденты</div>
-    ${ALL_ROLES.map((role) => {
-      const group = expertsByRole[role];
-      if (group.length === 0) return "";
-      const completed = group.filter((e) => e.status === "completed").length;
-      const isAnonymous = ANONYMOUS_ROLES.has(role);
-      return `<div class="vr-experts-group">
-        <div class="vr-experts-group-header">${esc(ROLE_LABELS[role])} (оценили ${completed} из ${group.length})</div>
-        ${!isAnonymous ? `<table class="vr-experts-table"><tbody>
-          ${group.map((e) => `<tr><td>${esc(e.displayName)}</td><td>${esc(e.department) || "—"}</td><td>${esc(e.position) || "—"}</td></tr>`).join("")}
-        </tbody></table>` : ""}
-      </div>`;
-    }).join("")}
-    ${data.experts.length === 0 ? '<div class="vr-empty">Респонденты не добавлены.</div>' : ""}
+    ${data.experts.length === 0 ? '<div class="vr-empty">Респонденты не добавлены.</div>' : `
+    <table class="vr-resp-summary">
+      <thead><tr>
+        ${ALL_ROLES.map((role) => `<th>${esc(ROLE_LABELS[role])}</th>`).join("")}
+      </tr></thead>
+      <tbody><tr>${respondentsSummaryRow}</tr></tbody>
+    </table>
+    ${namedGroups}
+    `}
   </div>
 
   ${!hasData ? `<div class="vr-no-feedback">Данные обратной связи ещё не получены. Дождитесь завершения интервью.</div>` : `
+
+  <div class="vr-section">
+    <div class="vr-section-title">Результаты</div>
+
+    ${radarData.series.length > 0 ? `
+    <div class="vr-radar-wrap">
+      <canvas id="radarChart" width="600" height="520"></canvas>
+    </div>
+    <table class="vr-avg-table">
+      <thead><tr>
+        <th style="text-align:left">Средняя оценка</th>
+        ${avgHeaders}
+        <th>средняя</th>
+      </tr></thead>
+      <tbody><tr>
+        <td>Средняя оценка</td>
+        ${avgRow}
+        <td class="vr-avg-cell vr-avg-grand">${radarData.grandAvg !== null ? radarData.grandAvg.toFixed(2) : "—"}</td>
+      </tr></tbody>
+    </table>
+    <script>
+    (function() {
+      var labels = ${escJson(radarData.labels)};
+      var datasets = ${escJson(chartDatasets)};
+      var ctx = document.getElementById('radarChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'radar',
+        data: { labels: labels, datasets: datasets },
+        options: {
+          responsive: false,
+          scales: {
+            r: {
+              min: 0, max: 5,
+              ticks: { stepSize: 0.5, font: { size: 10 }, backdropColor: 'transparent' },
+              pointLabels: { font: { size: 11 } },
+              grid: { color: '#e2e8f0' },
+              angleLines: { color: '#e2e8f0' }
+            }
+          },
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { font: { size: 12 }, padding: 16, usePointStyle: true }
+            }
+          }
+        }
+      });
+    })();
+    </script>
+    ` : ""}
+
+    <div class="vr-legend">
+      <span><span class="vr-badge-dev">1</span> — зона для развития</span>
+      <span><span class="vr-badge-str">1</span> — сильная сторона</span>
+      <span><span class="vr-dash">—</span> — не выбрано</span>
+    </div>
+    ${data.competencyGroups.map((group) => `
+      <div class="vr-group-title">${esc(group.groupName)}</div>
+      ${renderGroupMatrix(group.competencies, respondents)}
+    `).join("")}
+  </div>
 
   <div class="vr-section">
     <div class="vr-section-title">Результаты обратной связи</div>
@@ -270,19 +430,6 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     ${data.competencyGroups.map((group) => `
       <div class="vr-group-title">${esc(group.groupName)}</div>
       ${group.competencies.map((comp) => renderCompetencyBar(comp)).join("")}
-    `).join("")}
-  </div>
-
-  <div class="vr-section">
-    <div class="vr-section-title">Оценка по группам</div>
-    <div class="vr-legend">
-      <span><span class="vr-badge-dev">1</span> — зона для развития</span>
-      <span><span class="vr-badge-str">1</span> — сильная сторона</span>
-      <span><span class="vr-dash">—</span> — не выбрано</span>
-    </div>
-    ${data.competencyGroups.map((group) => `
-      <div class="vr-group-title">${esc(group.groupName)}</div>
-      ${renderGroupMatrix(group.competencies, respondents)}
     `).join("")}
   </div>
 
