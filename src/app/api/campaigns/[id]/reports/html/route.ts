@@ -20,7 +20,9 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const printMode = new URL(req.url).searchParams.get("print") === "1";
+  const searchParams = new URL(req.url).searchParams;
+  const printMode = searchParams.get("print") === "1";
+  const embedMode = searchParams.get("embed") === "1";
   const session = await getAdminSessionFromCookies();
   if (!session) {
     return new NextResponse("Unauthorized", { status: 401 });
@@ -121,7 +123,7 @@ export async function GET(
     "Content-Type": "text/html; charset=utf-8",
   };
 
-  if (!printMode) {
+  if (!printMode && !embedMode) {
     headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`;
   }
 

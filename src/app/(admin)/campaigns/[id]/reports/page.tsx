@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { CampaignTabs } from "@/components/campaign-tabs";
-import { triggerAnalysisAction } from "@/app/(admin)/campaigns/actions";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { prisma } from "@/lib/db/prisma";
+import { RegenerateButton } from "./RegenerateButton";
 
 export default async function CampaignReportsPage({
   params,
@@ -28,58 +27,60 @@ export default async function CampaignReportsPage({
     notFound();
   }
 
-  const reports = await prisma.analysisReport.findMany({
-    where: {
-      campaignId: campaign.id,
-    },
-    include: {
-      competency: true,
-    },
-    orderBy: [{ createdAt: "desc" }],
+  const latestReport = await prisma.analysisReport.findFirst({
+    where: { campaignId: campaign.id },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
   });
 
   return (
     <section className="stack-lg">
       <div className="row-between">
-        <h2>Отчеты: {campaign.title}</h2>
+        <div>
+          <h2>Отчёт: {campaign.title}</h2>
+          {latestReport && (
+            <p className="muted small" style={{ marginTop: "4px" }}>
+              Последняя генерация:{" "}
+              {latestReport.createdAt.toLocaleString("ru-RU", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          )}
+        </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <Link href={`/campaigns/${campaign.id}/reports/visual`} className="button">
-            Визуальный отчёт →
-          </Link>
-          <form action={triggerAnalysisAction}>
-            <input type="hidden" name="campaignId" value={campaign.id} />
-            <button type="submit" className="button primary">
-              Перегенерировать отчеты
-            </button>
-          </form>
+          <a
+            href={`/api/campaigns/${campaign.id}/reports/html`}
+            download
+            className="button"
+          >
+            Скачать отчёт
+          </a>
+          <RegenerateButton campaignId={campaign.id} />
         </div>
       </div>
 
       <CampaignTabs campaignId={campaign.id} />
 
-      {reports.length === 0 ? (
+      {!latestReport ? (
         <div className="card">
-          <p className="muted">Отчеты пока не сгенерированы.</p>
+          <p className="muted">Отчёты пока не сгенерированы. Нажмите «Перегенерировать отчёт».</p>
         </div>
       ) : (
-        <div className="stack-md">
-          {reports.map((report) => (
-            <article key={report.id} className="card stack-sm">
-              <div className="row-between">
-                <h3>
-                  {report.reportType === "overall"
-                    ? "Общий отчет"
-                    : `Компетенция: ${report.competency?.name ?? "unknown"}`}
-                </h3>
-                <span className="muted small">
-                  v{report.version} | {report.createdAt.toLocaleString("ru-RU")}
-                </span>
-              </div>
-
-              <pre className="markdown-preview">{report.contentMarkdown}</pre>
-            </article>
-          ))}
-        </div>
+        <iframe
+          src={`/api/campaigns/${campaign.id}/reports/html?embed=1`}
+          style={{
+            width: "100%",
+            height: "calc(100vh - 220px)",
+            border: "1px solid var(--border, #e2e8f0)",
+            borderRadius: "8px",
+            background: "#fff",
+          }}
+          title="Визуальный отчёт"
+        />
       )}
     </section>
   );
