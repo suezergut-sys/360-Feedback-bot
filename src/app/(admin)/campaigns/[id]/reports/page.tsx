@@ -47,7 +47,8 @@ export default async function CampaignReportsPage({
                 year: "numeric",
                 hour: "2-digit",
                 minute: "2-digit",
-              })}
+                timeZone: "Europe/Moscow",
+              })}{" "}(МСК)
             </p>
           )}
         </div>
@@ -59,7 +60,7 @@ export default async function CampaignReportsPage({
           >
             Скачать отчёт
           </a>
-          <RegenerateButton campaignId={campaign.id} />
+          <RegenerateButton campaignId={campaign.id} currentTs={latestReport?.createdAt.toISOString() ?? null} />
         </div>
       </div>
 
