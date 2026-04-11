@@ -696,7 +696,7 @@ function renderQuadrantSection(scatterData: ScatterData): string {
         label: cfg.title,
         data: quadrantMap[key]
           .filter((p) => p.selfAvg !== null && p.othersAvg !== null)
-          .map((p) => ({ x: p.selfAvg, y: p.othersAvg, num: p.num })),
+          .map((p) => ({ x: p.selfAvg, y: p.othersAvg, num: p.num, name: p.name })),
         backgroundColor: cfg.color,
         borderColor: cfg.color,
         pointRadius: 14,
@@ -827,10 +827,13 @@ function renderQuadrantSection(scatterData: ScatterData): string {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                title: function() { return ''; },
+                title: function(items) {
+                  var pt = items[0].raw;
+                  return pt.num + '. ' + pt.name;
+                },
                 label: function(context) {
                   var pt = context.raw;
-                  return pt.num + '. Самооценка: ' + pt.x.toFixed(2) + ' / Другие: ' + pt.y.toFixed(2);
+                  return ['Самооценка: ' + pt.x.toFixed(2), 'Другие: ' + pt.y.toFixed(2)];
                 }
               }
             }
