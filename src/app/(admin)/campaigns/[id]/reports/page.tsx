@@ -58,7 +58,15 @@ export default async function CampaignReportsPage({
             download
             className="button"
           >
-            Скачать отчёт
+            Скачать HTML
+          </a>
+          <a
+            href={`/api/campaigns/${campaign.id}/reports/html?print=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="button"
+          >
+            Скачать PDF
           </a>
           <RegenerateButton campaignId={campaign.id} currentTs={latestReport?.createdAt.toISOString() ?? null} />
         </div>

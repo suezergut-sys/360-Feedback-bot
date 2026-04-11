@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { getAdminSessionFromCookies } from "@/lib/auth/session";
 import { buildVisualReportData, type VisualCompetencyData, type RespondentRole } from "@/modules/reports/assembly";
 import { OPEN_QUESTIONS } from "@/modules/interviews/state";
+import fs from "fs";
+import path from "path";
 
 const ROLE_LABELS: Record<RespondentRole, string> = {
   self: "Самооценка",
@@ -197,6 +199,16 @@ export async function GET(
 
   const scatterData = { points: scatterPoints, selfThreshold, othersThreshold, quadrantMap };
 
+  // Inline logo as base64 data URL for self-contained HTML
+  let logoDataUrl = "";
+  try {
+    const logoPath = path.join(process.cwd(), "public", "logo-korus.png");
+    const logoBuffer = fs.readFileSync(logoPath);
+    logoDataUrl = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+  } catch {
+    // logo not found — skip
+  }
+
   const html = buildHtml({
     campaign,
     data,
@@ -209,6 +221,7 @@ export async function GET(
     radarData,
     avgMatrix,
     scatterData,
+    logoDataUrl,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -268,6 +281,7 @@ function buildHtml({
   radarData,
   avgMatrix,
   scatterData,
+  logoDataUrl,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -280,6 +294,7 @@ function buildHtml({
   radarData: { labels: string[]; series: RadarSeries[]; grandAvg: number | null };
   avgMatrix: Map<string, Record<RespondentRole, number | null> & { overall: number | null }>;
   scatterData: ScatterData;
+  logoDataUrl: string;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -321,7 +336,8 @@ function buildHtml({
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
-  .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
+  .vr-logo { display: block; height: 52px; width: auto; margin-bottom: 24px; }
+  .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; position: relative; }
   .vr-cover-eyebrow { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
   .vr-cover-title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #1e293b; margin-bottom: 16px; }
   .vr-cover-name { font-size: 28px; font-weight: 700; margin-bottom: 20px; }
@@ -395,6 +411,7 @@ function buildHtml({
   .vr-qs-num { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0; }
   .vr-qs-name { color: #1e293b; line-height: 1.4; }
   .vr-qs-empty { font-size: 11px; color: #94a3b8; font-style: italic; }
+  .vr-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
   @media print {
     .vr-cover { page-break-after: always; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -406,6 +423,7 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 <div class="vr-page">
 
   <div class="vr-cover">
+    ${logoDataUrl ? `<img src="${logoDataUrl}" class="vr-logo" alt="КОРУС Консалтинг">` : ""}
     <div class="vr-cover-eyebrow">Оценка персонала</div>
     <div class="vr-cover-title">Отчёт по результатам оценки 360°</div>
     <div class="vr-cover-name">${esc(campaign.subjectName)}</div>
@@ -439,12 +457,12 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     </div>
     <table class="vr-avg-table">
       <thead><tr>
-        <th style="text-align:left">Средняя оценка</th>
+        <th></th>
         ${avgHeaders}
         <th>средняя</th>
       </tr></thead>
       <tbody><tr>
-        <td>Средняя оценка</td>
+        <td></td>
         ${avgRow}
         <td class="vr-avg-cell vr-avg-grand">${radarData.grandAvg !== null ? radarData.grandAvg.toFixed(2) : "—"}</td>
       </tr></tbody>
@@ -553,6 +571,10 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
         }).join("")}
   </div>
   `}
+
+  <div class="vr-footer">
+    Разработка и проведение оценки 360° : Корпоративный Университет ГК «КОРУС Консалтинг» 2026
+  </div>
 
 </div>
 </body>
