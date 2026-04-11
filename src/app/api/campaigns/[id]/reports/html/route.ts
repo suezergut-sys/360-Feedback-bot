@@ -355,8 +355,10 @@ function buildHtml({
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
-  .vr-bg { max-width: 1040px; margin: 0 auto; background: #eff6ff; min-height: 100vh; }
-  .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
+  .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; position: relative; }
+  .vr-page::before, .vr-page::after { content: ''; position: absolute; top: 0; bottom: 0; width: 1px; background: #b6c8e0; }
+  .vr-page::before { left: 10px; }
+  .vr-page::after { right: 10px; }
   .vr-cover-logos { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 16px; }
   .vr-logo { display: block; height: 101px; width: auto; }
   .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; text-align: left; padding: 8px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
@@ -446,7 +448,6 @@ function buildHtml({
 ${printMode ? `<script>window.addEventListener("load", function(){ window.print(); });</script>` : ""}
 </head>
 <body>
-<div class="vr-bg">
 <div class="vr-page">
 
   <div class="vr-cover">
@@ -600,7 +601,6 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     Разработка и проведение оценки 360° : Корпоративный Университет ГК «КОРУС Консалтинг» 2026
   </div>
 
-</div>
 </div>
 </body>
 </html>`;
