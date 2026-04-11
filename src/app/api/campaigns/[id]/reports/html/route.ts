@@ -338,7 +338,7 @@ function buildHtml({
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
-  .vr-logo { display: block; height: 78px; width: auto; margin-bottom: 16px; align-self: flex-start; }
+  .vr-logo { display: block; height: 101px; width: auto; margin-bottom: 16px; align-self: flex-start; }
   .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; text-align: left; padding: 8px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
   .vr-cover-eyebrow { align-self: center; }
   .vr-cover-title { align-self: center; }
@@ -430,7 +430,6 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 
   <div class="vr-cover">
     ${logoDataUrl ? `<img src="${logoDataUrl}" class="vr-logo" alt="КОРУС Консалтинг">` : ""}
-    <div class="vr-cover-eyebrow">Оценка персонала</div>
     <div class="vr-cover-title">Отчёт по результатам оценки 360°</div>
     <div class="vr-cover-name">${esc(campaign.subjectName)}</div>
     <div class="vr-cover-meta">
