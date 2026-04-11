@@ -421,13 +421,16 @@ function buildHtml({
   .vr-reco-subtitle { font-size: 11px; color: #64748b; font-style: italic; margin-bottom: 8px; }
   .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
   .vr-no-feedback { padding: 32px; text-align: center; color: #94a3b8; border: 1px dashed #e2e8f0; border-radius: 8px; margin-bottom: 32px; }
-  .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 8px; }
+  .vr-radar-wrap { display: block; max-width: 760px; margin: 0 auto 8px; }
+  .vr-radar-wrap canvas { width: 100% !important; height: auto !important; display: block; }
   .vr-avg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
   .vr-avg-table th { padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; text-align: center; }
   .vr-avg-table td { padding: 8px 10px; border: 1px solid #e2e8f0; }
   .vr-avg-cell { padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 700; font-size: 14px; }
   .vr-avg-grand { background: #f0fdf4; color: #16a34a; }
-  .vr-quadrant-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
+  .vr-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .vr-quadrant-wrap { display: block; max-width: 520px; margin: 0 auto 24px; }
+  .vr-quadrant-wrap canvas { width: 100% !important; height: auto !important; display: block; }
   .vr-quadrant-sections { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
   .vr-qs-zone { border-bottom: 1px solid #e2e8f0; }
   .vr-qs-zone:last-child { border-bottom: none; }
@@ -440,6 +443,28 @@ function buildHtml({
   .vr-qs-name { color: #1e293b; line-height: 1.4; }
   .vr-qs-empty { font-size: 11px; color: #94a3b8; font-style: italic; }
   .vr-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+  @media (max-width: 640px) {
+    .vr-page { padding: 10px 10px 24px; }
+    .vr-page::before { left: 3px; }
+    .vr-page::after { right: 3px; }
+    .vr-logo { height: 60px !important; }
+    .vr-cover { min-height: auto; padding-bottom: 20px; }
+    .vr-cover-title { font-size: 13px; }
+    .vr-cover-name { font-size: 18px; }
+    .vr-cover-meta-row { flex-direction: column; gap: 2px; align-items: center; }
+    .vr-section-title { font-size: 13px; }
+    .vr-resp-summary th { padding: 6px 6px; font-size: 11px; }
+    .vr-resp-cell { padding: 6px 6px; font-size: 12px; }
+    .vr-comp-row { flex-wrap: wrap; gap: 6px; }
+    .vr-comp-name { width: 100%; font-size: 11px; padding-bottom: 2px; }
+    .vr-bar-wrap { width: 100%; }
+    .vr-matrix td:first-child { width: 110px; min-width: 110px; white-space: normal; }
+    .vr-qs-body { grid-template-columns: 1fr; }
+    .vr-qs-list { border-right: none; border-bottom: 1px solid #e2e8f0; }
+    .vr-top5-section { grid-template-columns: 1fr; gap: 16px; }
+    .vr-top5-name { width: auto; flex: 1; }
+    .vr-reco-answer { font-size: 11px; }
+  }
   @media print {
     .vr-cover { page-break-after: always; }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -467,12 +492,14 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
   <div class="vr-section">
     <div class="vr-section-title">Респонденты</div>
     ${data.experts.length === 0 ? '<div class="vr-empty">Респонденты не добавлены.</div>' : `
+    <div class="vr-scroll-x">
     <table class="vr-resp-summary">
       <thead><tr>
         ${ALL_ROLES.map((role) => `<th>${esc(ROLE_LABELS[role])}</th>`).join("")}
       </tr></thead>
       <tbody><tr>${respondentsSummaryRow}</tr></tbody>
     </table>
+    </div>
     `}
   </div>
 
@@ -483,8 +510,9 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 
     ${radarData.series.length > 0 ? `
     <div class="vr-radar-wrap">
-      <canvas id="radarChart" width="760" height="600"></canvas>
+      <canvas id="radarChart"></canvas>
     </div>
+    <div class="vr-scroll-x">
     <table class="vr-avg-table">
       <thead><tr>
         ${avgHeaders}
@@ -495,6 +523,7 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
         <td class="vr-avg-cell vr-avg-grand">${radarData.grandAvg !== null ? radarData.grandAvg.toFixed(2) : "—"}</td>
       </tr></tbody>
     </table>
+    </div>
     <script>
     (function() {
       var labels = ${escJson(radarData.labels)};
@@ -522,7 +551,9 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
         type: 'radar',
         data: { labels: labels, datasets: processed },
         options: {
-          responsive: false,
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 1.27,
           layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
           scales: {
             r: {
@@ -653,7 +684,7 @@ function renderGroupMatrix(
     {} as Record<RespondentRole, number>,
   );
 
-  return `<table class="vr-matrix">
+  return `<div class="vr-scroll-x"><table class="vr-matrix">
     <thead>
       <tr>
         <th>Компетенция</th>
@@ -677,7 +708,7 @@ function renderGroupMatrix(
         </tr>`;
       }).join("")}
     </tbody>
-  </table>`;
+  </table></div>`;
 }
 
 const QUADRANT_CONFIG: Record<QuadrantKey, { title: string; desc: string; color: string; bg: string }> = {
@@ -762,7 +793,7 @@ function renderQuadrantSection(scatterData: ScatterData): string {
     <div class="vr-section-title">Сильные стороны / потребности в развитии</div>
     ${!hasPoints ? `<div class="vr-no-data">Недостаточно данных для построения диаграммы.</div>` : `
     <div class="vr-quadrant-wrap">
-      <canvas id="quadrantChart" width="520" height="480"></canvas>
+      <canvas id="quadrantChart"></canvas>
     </div>
     <script>
     (function() {
@@ -821,7 +852,9 @@ function renderQuadrantSection(scatterData: ScatterData): string {
         type: 'scatter',
         data: { datasets: datasets },
         options: {
-          responsive: false,
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 1.08,
           scales: {
             x: {
               min: 0, max: 6,
