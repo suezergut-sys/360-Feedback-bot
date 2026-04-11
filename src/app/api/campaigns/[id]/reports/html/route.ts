@@ -323,7 +323,9 @@ function buildHtml({
   const avgRow = radarData.series
     .map((s) => `<td class="vr-avg-cell">${s.overallAvg !== null ? s.overallAvg.toFixed(2) : "—"}</td>`)
     .join("");
-  const avgHeaders = radarData.series.map((s) => `<th>${esc(s.label)}</th>`).join("");
+  const avgHeaders = radarData.series
+    .map((s) => `<th><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color};margin-right:5px;vertical-align:middle;flex-shrink:0"></span>${esc(s.label)}</th>`)
+    .join("");
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -335,9 +337,13 @@ function buildHtml({
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
-  .vr-page { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
-  .vr-logo { display: block; height: 52px; width: auto; margin-bottom: 24px; }
-  .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; position: relative; }
+  .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
+  .vr-logo { display: block; height: 78px; width: auto; margin-bottom: 16px; align-self: flex-start; }
+  .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; text-align: left; padding: 8px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
+  .vr-cover-eyebrow { align-self: center; }
+  .vr-cover-title { align-self: center; }
+  .vr-cover-name { align-self: center; }
+  .vr-cover-meta { align-self: center; text-align: center; }
   .vr-cover-eyebrow { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
   .vr-cover-title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #1e293b; margin-bottom: 16px; }
   .vr-cover-name { font-size: 28px; font-weight: 700; margin-bottom: 20px; }
@@ -396,7 +402,7 @@ function buildHtml({
   .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 8px; }
   .vr-avg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
   .vr-avg-table th { padding: 6px 10px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600; text-align: center; }
-  .vr-avg-table td:first-child { padding: 8px 10px; border: 1px solid #e2e8f0; font-weight: 700; background: #1e293b; color: #fff; }
+  .vr-avg-table td { padding: 8px 10px; border: 1px solid #e2e8f0; }
   .vr-avg-cell { padding: 8px 10px; border: 1px solid #e2e8f0; text-align: center; font-weight: 700; font-size: 14px; }
   .vr-avg-grand { background: #f0fdf4; color: #16a34a; }
   .vr-quadrant-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
@@ -457,12 +463,10 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     </div>
     <table class="vr-avg-table">
       <thead><tr>
-        <th></th>
         ${avgHeaders}
         <th>средняя</th>
       </tr></thead>
       <tbody><tr>
-        <td></td>
         ${avgRow}
         <td class="vr-avg-cell vr-avg-grand">${radarData.grandAvg !== null ? radarData.grandAvg.toFixed(2) : "—"}</td>
       </tr></tbody>
@@ -532,10 +536,7 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
                 }
               }
             },
-            legend: {
-              position: 'right',
-              labels: { font: { size: 12 }, padding: 16, usePointStyle: true }
-            }
+            legend: { display: false }
           }
         }
       });
