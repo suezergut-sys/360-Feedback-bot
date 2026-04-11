@@ -12,6 +12,9 @@ import { logger } from "@/lib/logging/logger";
 import { campaignInputSchema } from "@/lib/validators/campaign";
 import { competencyInputSchema } from "@/lib/validators/competency";
 import { respondentInputSchema } from "@/lib/validators/respondent";
+import { sendTelegramMessage } from "@/lib/telegram/client";
+import { env } from "@/lib/env";
+
 
 function parseBehavioralMarkers(value: string): string[] {
   return value
@@ -60,13 +63,66 @@ export async function updateCampaignAction(formData: FormData) {
     redirect(`/campaigns/${campaignId}/edit?error=campaign_validation`);
   }
 
+  // Check if status is being changed to "completed"
+  const previousCampaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, ownerAdminId: admin.id },
+    select: { status: true, publicReportToken: true, title: true },
+  });
+
+  const isCompletingNow = parsed.data.status === "completed" && previousCampaign?.status !== "completed";
+
+  // Generate public token if completing for the first time
+  const publicReportToken =
+    isCompletingNow && !previousCampaign?.publicReportToken
+      ? crypto.randomUUID()
+      : undefined;
+
   await prisma.campaign.updateMany({
     where: {
       id: campaignId,
       ownerAdminId: admin.id,
     },
-    data: parsed.data,
+    data: {
+      ...parsed.data,
+      ...(publicReportToken ? { publicReportToken } : {}),
+    },
   });
+
+  // Send Telegram notification to self-assessment respondent when campaign completes
+  if (isCompletingNow) {
+    const token = publicReportToken ?? previousCampaign?.publicReportToken;
+    if (token) {
+      try {
+        const appUrl = env.APP_BASE_URL || process.env.VERCEL_URL || "";
+        const reportUrl = appUrl
+          ? `${appUrl.startsWith("http") ? appUrl : `https://${appUrl}`}/api/reports/${token}`
+          : null;
+
+        if (reportUrl) {
+          const selfRespondent = await prisma.respondent.findFirst({
+            where: { campaignId, role: "self", telegramUserId: { not: null } },
+            select: { telegramUserId: true },
+          });
+
+          if (selfRespondent?.telegramUserId) {
+            const campaignTitle = previousCampaign?.title ?? parsed.data.title;
+            const message = [
+              "Привет!",
+              `Завершился опрос «${campaignTitle}».`,
+              `По <a href="${reportUrl}">ссылке</a> ты можешь посмотреть его результаты.`,
+            ].join("\n");
+
+            await sendTelegramMessage(selfRespondent.telegramUserId.toString(), message, "HTML");
+          }
+        }
+      } catch (err) {
+        logger.warn("Failed to send completion notification to self respondent", {
+          campaignId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
 
   revalidatePath(`/campaigns/${campaignId}/edit`);
   revalidatePath("/campaigns");

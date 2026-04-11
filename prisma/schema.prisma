@@ -74,10 +74,11 @@ model Campaign {
   subjectName    String             @map("subject_name")
   status         CampaignStatus     @default(draft)
   language       String             @default("ru")
-  welcomeMessage String             @map("welcome_message")
-  closingMessage String             @map("closing_message")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
+  welcomeMessage    String             @map("welcome_message")
+  closingMessage    String             @map("closing_message")
+  publicReportToken String?            @unique @map("public_report_token")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
 
   owner          Admin              @relation(fields: [ownerAdminId], references: [id], onDelete: Cascade)
   competencies   Competency[]

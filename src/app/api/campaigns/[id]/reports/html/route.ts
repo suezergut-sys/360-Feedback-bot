@@ -33,25 +33,36 @@ export async function GET(
   const searchParams = new URL(req.url).searchParams;
   const printMode = searchParams.get("print") === "1";
   const embedMode = searchParams.get("embed") === "1";
-  const session = await getAdminSessionFromCookies();
-  if (!session) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  const admin = await prisma.admin.findUnique({
-    where: { id: session.adminId },
-    select: { id: true },
-  });
-  if (!admin) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
+  const publicToken = searchParams.get("public_token");
 
   const { id } = await params;
 
-  const campaign = await prisma.campaign.findFirst({
-    where: { id, ownerAdminId: admin.id },
-    select: { id: true, title: true, subjectName: true, updatedAt: true },
-  });
+  let campaign: { id: string; title: string; subjectName: string; updatedAt: Date } | null = null;
+
+  if (publicToken) {
+    // Public access via token — no session required
+    campaign = await prisma.campaign.findFirst({
+      where: { id, publicReportToken: publicToken },
+      select: { id: true, title: true, subjectName: true, updatedAt: true },
+    });
+  } else {
+    // Admin access via session cookie
+    const session = await getAdminSessionFromCookies();
+    if (!session) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+    const admin = await prisma.admin.findUnique({
+      where: { id: session.adminId },
+      select: { id: true },
+    });
+    if (!admin) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+    campaign = await prisma.campaign.findFirst({
+      where: { id, ownerAdminId: admin.id },
+      select: { id: true, title: true, subjectName: true, updatedAt: true },
+    });
+  }
 
   if (!campaign) {
     return new NextResponse("Not Found", { status: 404 });
@@ -199,15 +210,17 @@ export async function GET(
 
   const scatterData = { points: scatterPoints, selfThreshold, othersThreshold, quadrantMap };
 
-  // Inline logo as base64 data URL for self-contained HTML
-  let logoDataUrl = "";
-  try {
-    const logoPath = path.join(process.cwd(), "public", "logo-korus.png");
-    const logoBuffer = fs.readFileSync(logoPath);
-    logoDataUrl = `data:image/png;base64,${logoBuffer.toString("base64")}`;
-  } catch {
-    // logo not found — skip
+  // Inline logos as base64 data URLs for self-contained HTML
+  function readLogoDataUrl(filename: string): string {
+    try {
+      const buf = fs.readFileSync(path.join(process.cwd(), "public", filename));
+      return `data:image/png;base64,${buf.toString("base64")}`;
+    } catch {
+      return "";
+    }
   }
+  const logoDataUrl = readLogoDataUrl("logo-korus.png");
+  const logoRightDataUrl = readLogoDataUrl("logo-brainup.png");
 
   const html = buildHtml({
     campaign,
@@ -222,6 +235,7 @@ export async function GET(
     avgMatrix,
     scatterData,
     logoDataUrl,
+    logoRightDataUrl,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -282,6 +296,7 @@ function buildHtml({
   avgMatrix,
   scatterData,
   logoDataUrl,
+  logoRightDataUrl,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -295,6 +310,7 @@ function buildHtml({
   avgMatrix: Map<string, Record<RespondentRole, number | null> & { overall: number | null }>;
   scatterData: ScatterData;
   logoDataUrl: string;
+  logoRightDataUrl: string;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -338,7 +354,8 @@ function buildHtml({
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
-  .vr-logo { display: block; height: 101px; width: auto; margin-bottom: 16px; align-self: flex-start; }
+  .vr-cover-logos { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 16px; }
+  .vr-logo { display: block; height: 101px; width: auto; }
   .vr-cover { min-height: 320px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; text-align: left; padding: 8px 0 32px; border-bottom: 2px solid #e2e8f0; margin-bottom: 32px; }
   .vr-cover-eyebrow { align-self: center; }
   .vr-cover-title { align-self: center; }
@@ -429,7 +446,10 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
 <div class="vr-page">
 
   <div class="vr-cover">
-    ${logoDataUrl ? `<img src="${logoDataUrl}" class="vr-logo" alt="КОРУС Консалтинг">` : ""}
+    <div class="vr-cover-logos">
+      ${logoDataUrl ? `<img src="${logoDataUrl}" class="vr-logo" alt="КОРУС Консалтинг">` : "<div></div>"}
+      ${logoRightDataUrl ? `<img src="${logoRightDataUrl}" class="vr-logo" alt="KORUS Brain Up" style="height:101px">` : ""}
+    </div>
     <div class="vr-cover-title">Отчёт по результатам оценки 360°</div>
     <div class="vr-cover-name">${esc(campaign.subjectName)}</div>
     <div class="vr-cover-meta">

@@ -42,10 +42,11 @@ async function telegramApiRequest<T>(method: string, body: Record<string, unknow
   return payload.result;
 }
 
-export async function sendTelegramMessage(chatId: number | string, text: string): Promise<void> {
+export async function sendTelegramMessage(chatId: number | string, text: string, parseMode?: "HTML" | "Markdown"): Promise<void> {
   await telegramApiRequest("sendMessage", {
     chat_id: chatId,
     text,
+    ...(parseMode ? { parse_mode: parseMode } : {}),
   });
 }
 
