@@ -3,6 +3,11 @@ import { prisma } from "@/lib/db/prisma";
 import { campaignInputSchema, type CampaignInput } from "@/lib/validators/campaign";
 import { COMPETENCY_TEMPLATES } from "@/data/competency-templates";
 
+type CampaignCreatePayload = CampaignInput & {
+  welcomeMessage: string;
+  closingMessage: string;
+};
+
 export async function listCampaigns(ownerAdminId: string) {
   return prisma.campaign.findMany({
     where: { ownerAdminId },
@@ -36,13 +41,16 @@ export async function getCampaignForAdmin(campaignId: string, ownerAdminId: stri
   });
 }
 
-export async function createCampaign(ownerAdminId: string, payload: CampaignInput) {
-  const data = campaignInputSchema.parse(payload);
+export async function createCampaign(ownerAdminId: string, payload: CampaignCreatePayload) {
+  const { welcomeMessage, closingMessage, ...rest } = payload;
+  const data = campaignInputSchema.parse(rest);
 
   return prisma.campaign.create({
     data: {
       ownerAdminId,
       ...data,
+      welcomeMessage,
+      closingMessage,
       competencies: {
         create: COMPETENCY_TEMPLATES.map((t) => ({
           name: t.name,

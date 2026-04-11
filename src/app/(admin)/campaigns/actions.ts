@@ -35,15 +35,17 @@ export async function createCampaignAction(formData: FormData) {
     subjectName: String(formData.get("subjectName") ?? ""),
     status: String(formData.get("status") ?? "draft"),
     language: String(formData.get("language") ?? "ru"),
-    welcomeMessage: String(formData.get("welcomeMessage") ?? ""),
-    closingMessage: String(formData.get("closingMessage") ?? ""),
   });
 
   if (!parsed.success) {
     redirect("/campaigns/new?error=campaign_validation");
   }
 
-  const campaign = await createCampaign(admin.id, parsed.data);
+  const campaign = await createCampaign(admin.id, {
+    ...parsed.data,
+    welcomeMessage: "Добро пожаловать в опрос 360°.",
+    closingMessage: "Спасибо за участие в опросе! Ваши ответы записаны.",
+  });
 
   redirect(`/campaigns/${campaign.id}/edit`);
 }
@@ -58,8 +60,6 @@ export async function updateCampaignAction(formData: FormData) {
     subjectName: String(formData.get("subjectName") ?? ""),
     status: String(formData.get("status") ?? "draft"),
     language: String(formData.get("language") ?? "ru"),
-    welcomeMessage: String(formData.get("welcomeMessage") ?? ""),
-    closingMessage: String(formData.get("closingMessage") ?? ""),
   });
 
   if (!parsed.success) {

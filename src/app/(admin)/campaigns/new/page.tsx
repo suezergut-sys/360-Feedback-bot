@@ -2,8 +2,7 @@ import Link from "next/link";
 import { createCampaignAction } from "@/app/(admin)/campaigns/actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  campaign_validation:
-    "Проверьте поля кампании: приветственное и финальное сообщения должны быть не короче 10 символов.",
+  campaign_validation: "Проверьте поля формы: заполните все обязательные поля.",
 };
 
 export default async function CreateCampaignPage({
@@ -56,30 +55,6 @@ export default async function CreateCampaignPage({
           Язык
         </label>
         <input id="language" name="language" className="input" defaultValue="ru" required />
-
-        <label className="form-label" htmlFor="welcomeMessage">
-          Welcome message
-        </label>
-        <textarea
-          id="welcomeMessage"
-          name="welcomeMessage"
-          className="textarea"
-          required
-          minLength={10}
-          rows={4}
-        />
-
-        <label className="form-label" htmlFor="closingMessage">
-          Closing message
-        </label>
-        <textarea
-          id="closingMessage"
-          name="closingMessage"
-          className="textarea"
-          required
-          minLength={10}
-          rows={4}
-        />
 
         <button className="button primary" type="submit">
           Создать кампанию

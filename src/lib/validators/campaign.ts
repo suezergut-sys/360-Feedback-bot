@@ -8,8 +8,6 @@ export const campaignInputSchema = z.object({
   subjectName: z.string().min(2).max(200),
   status: campaignStatusSchema.default("draft"),
   language: z.string().default("ru"),
-  welcomeMessage: z.string().min(10).max(4000),
-  closingMessage: z.string().min(10).max(4000),
 });
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;

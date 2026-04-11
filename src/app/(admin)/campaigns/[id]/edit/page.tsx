@@ -7,8 +7,7 @@ import { CampaignTabs } from "@/components/campaign-tabs";
 import type { RespondentRole } from "@prisma/client";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  campaign_validation:
-    "Проверьте поля кампании: приветственное и финальное сообщения должны быть не короче 10 символов.",
+  campaign_validation: "Проверьте поля формы: заполните все обязательные поля.",
 };
 
 const ROLE_LABELS: Record<RespondentRole, string> = {
@@ -125,32 +124,6 @@ export default async function EditCampaignPage({
         </label>
         <input id="language" name="language" className="input" defaultValue={campaign.language} required />
 
-        <label className="form-label" htmlFor="welcomeMessage">
-          Welcome message (запасной)
-        </label>
-        <textarea
-          id="welcomeMessage"
-          name="welcomeMessage"
-          className="textarea"
-          defaultValue={campaign.welcomeMessage}
-          minLength={10}
-          rows={4}
-          required
-        />
-
-        <label className="form-label" htmlFor="closingMessage">
-          Closing message (запасной)
-        </label>
-        <textarea
-          id="closingMessage"
-          name="closingMessage"
-          className="textarea"
-          defaultValue={campaign.closingMessage}
-          minLength={10}
-          rows={4}
-          required
-        />
-
         <button className="button primary" type="submit">
           Сохранить изменения
         </button>
@@ -196,7 +169,7 @@ export default async function EditCampaignPage({
                     className="textarea"
                     defaultValue={closingVal}
                     rows={3}
-                    placeholder={`По умолчанию: «${campaign.closingMessage.slice(0, 60)}…»`}
+                    placeholder="Оставьте пустым — будет использован текст из «Сообщений по ролям» по умолчанию"
                   />
                 </div>
               </details>
