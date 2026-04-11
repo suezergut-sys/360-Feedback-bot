@@ -222,7 +222,7 @@ export async function GET(
     }
   }
   const logoDataUrl = readLogoDataUrl("logo-korus.png");
-  const logoRightDataUrl = readLogoDataUrl("logo-brainup.png");
+  const logoRightDataUrl = readLogoDataUrl("logo-brainup.jpg");
 
   const html = buildHtml({
     campaign,
