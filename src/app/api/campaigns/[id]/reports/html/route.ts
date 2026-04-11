@@ -214,7 +214,9 @@ export async function GET(
   function readLogoDataUrl(filename: string): string {
     try {
       const buf = fs.readFileSync(path.join(process.cwd(), "public", filename));
-      return `data:image/png;base64,${buf.toString("base64")}`;
+      const ext = filename.split(".").pop()?.toLowerCase();
+      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+      return `data:${mime};base64,${buf.toString("base64")}`;
     } catch {
       return "";
     }
