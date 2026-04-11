@@ -107,21 +107,37 @@ export type InboundMessage = {
 
 // ── Message builders ───────────────────────────────────────────────────────
 
-function buildRatingMessage(competency: Competency, index: number, totalCompetencies: number, isFirst: boolean): string {
-  const totalSteps = totalCompetencies + OPEN_QUESTIONS.length;
+function buildRatingMessage(
+  competency: Competency,
+  index: number,
+  totalCompetencies: number,
+  isFirst: boolean,
+  isSelf = false,
+): string {
+  const totalSteps = isSelf ? totalCompetencies : totalCompetencies + OPEN_QUESTIONS.length;
   const parts: string[] = [];
 
   if (isFirst) {
-    parts.push(
-      "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с тобой.",
-      "Опирайтесь на реальные наблюдения за последние 3–6 месяцев.",
-      "",
-      "Шкала оценки:",
-      RATING_SCALE_HINT,
-      "",
-      "──────────────────────",
-      "",
-    );
+    if (isSelf) {
+      parts.push(
+        "Шкала оценки:",
+        RATING_SCALE_HINT,
+        "",
+        "──────────────────────",
+        "",
+      );
+    } else {
+      parts.push(
+        "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с тобой.",
+        "Опирайтесь на реальные наблюдения за последние 3–6 месяцев.",
+        "",
+        "Шкала оценки:",
+        RATING_SCALE_HINT,
+        "",
+        "──────────────────────",
+        "",
+      );
+    }
   }
 
   parts.push(`Шаг: ${index + 1}/${totalSteps}`);
@@ -384,9 +400,11 @@ export async function handleRatingCallback(params: {
       return { editText: "✅ Опрос начат", reply: { text: closingMessage } };
     }
 
+    const isSelf = context.respondent.role === "self";
+
     await setSessionState({ sessionId: session.id, state: ratingState, currentCompetencyId: firstCompetency.id });
 
-    const ratingMessage = buildRatingMessage(firstCompetency, 0, context.competencies.length, true);
+    const ratingMessage = buildRatingMessage(firstCompetency, 0, context.competencies.length, true, isSelf);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
@@ -419,6 +437,7 @@ export async function handleRatingCallback(params: {
     return { editText: "", reply: null };
   }
 
+  const isSelf = context.respondent.role === "self";
   const rating = valueStr === "na" ? null : parseInt(valueStr, 10);
 
   await prisma.competencyRating.upsert({
@@ -440,7 +459,20 @@ export async function handleRatingCallback(params: {
   const nextRatingIndex = state.ratingIndex + 1;
 
   if (nextRatingIndex >= context.competencies.length) {
-    // All competencies rated — start open questions
+    // All competencies rated
+    if (isSelf) {
+      // Self-assessment: skip open questions, finalize immediately
+      const closingMessage = await finalizeInterview(context, session.id, state);
+
+      logger.info("Rating phase complete (self), finalizing", {
+        sessionId: session.id,
+        respondentId: context.respondent.id,
+      });
+
+      return { editText: "", deleteMessageId: params.messageId, reply: { text: closingMessage } };
+    }
+
+    // Other roles: start open questions
     const newState = withOpenQuestionsStarted(state);
 
     await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: null });
@@ -468,7 +500,7 @@ export async function handleRatingCallback(params: {
 
   await setSessionState({ sessionId: session.id, state: newState, currentCompetencyId: nextCompetency.id });
 
-  const message = buildRatingMessage(nextCompetency, nextRatingIndex, context.competencies.length, false);
+  const message = buildRatingMessage(nextCompetency, nextRatingIndex, context.competencies.length, false, isSelf);
 
   await buildAndStoreAssistantQuestion({
     sessionId: session.id,
@@ -543,15 +575,24 @@ async function sendConsentAndResetSession(
     currentCompetencyId: context.competencies[0]?.id ?? null,
   });
 
-  const consentMessage = [
-    "Привет!",
-    "Спасибо за готовность пройти опрос.",
-    `Я помогу собрать обратную связь на ${context.campaign.subjectName}.`,
-    "Сначала мы пройдем по оценке 10 компетенций, а в конце я задам открытые вопросы, на которые ты можешь отвечать как текстовыми, так и голосовыми сообщениями (как тебе удобнее).",
-    "Твои ответы останутся анонимными, я не сохраняю твои данные, только сами ответы.",
-    "",
-    "Если готов(а) начинать, нажми на кнопку.",
-  ].join("\n");
+  const isSelf = context.respondent.role === "self";
+
+  const consentMessage = isSelf
+    ? [
+        "Привет!",
+        "Оцени (по шкале от 1 до 5) насколько, по твоему мнению, проявляются компетенции в твоём поведении.",
+        "",
+        "Нажми кнопку «Начать» когда готов(а).",
+      ].join("\n")
+    : [
+        "Привет!",
+        "Спасибо за готовность пройти опрос.",
+        `Я помогу собрать обратную связь на ${context.campaign.subjectName}.`,
+        "Сначала мы пройдем по оценке 10 компетенций, а в конце я задам открытые вопросы, на которые ты можешь отвечать как текстовыми, так и голосовыми сообщениями (как тебе удобнее).",
+        "Твои ответы останутся анонимными, я не сохраняю твои данные, только сами ответы.",
+        "",
+        "Если готов(а) начинать, нажми на кнопку.",
+      ].join("\n");
 
   await saveMessage({
     sessionId: session.id,
@@ -598,7 +639,7 @@ export async function handleResumeCommand(telegramUserId: bigint, chatId: number
       return { text: "Все оценки выставлены. Ожидайте следующего шага." };
     }
 
-    const message = buildRatingMessage(competency, state.ratingIndex, context.competencies.length, false);
+    const message = buildRatingMessage(competency, state.ratingIndex, context.competencies.length, false, context.respondent.role === "self");
     return { text: message, keyboard: RATING_KEYBOARD };
   }
 
@@ -731,6 +772,12 @@ export async function handleRespondentMessage(input: InboundMessage): Promise<Bo
   }
 
   // ── Open questions phase ─────────────────────────────────────────────────
+  // Self-assessment respondents don't have open questions — finalize if they somehow reach this phase
+  if (state.phase === "open_questions" && context.respondent.role === "self") {
+    const closingMessage = await finalizeInterview(context, session.id, state);
+    return { text: closingMessage };
+  }
+
   if (state.phase === "open_questions") {
     const question = OPEN_QUESTIONS[state.openQuestionIndex];
 
