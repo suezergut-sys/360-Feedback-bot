@@ -355,6 +355,7 @@ function buildHtml({
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
+  .vr-bg { max-width: 1040px; margin: 0 auto; background: #dbeafe; min-height: 100vh; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
   .vr-cover-logos { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 16px; }
   .vr-logo { display: block; height: 101px; width: auto; }
@@ -445,6 +446,7 @@ function buildHtml({
 ${printMode ? `<script>window.addEventListener("load", function(){ window.print(); });</script>` : ""}
 </head>
 <body>
+<div class="vr-bg">
 <div class="vr-page">
 
   <div class="vr-cover">
@@ -598,6 +600,7 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     Разработка и проведение оценки 360° : Корпоративный Университет ГК «КОРУС Консалтинг» 2026
   </div>
 
+</div>
 </div>
 </body>
 </html>`;
