@@ -175,9 +175,9 @@ export async function GET(
     return { num: idx + 1, name: comp.name, selfAvg, othersAvg };
   });
 
-  // Fixed threshold at center of 0–6 scale
-  const selfThreshold = 3;
-  const othersThreshold = 3;
+  // Fixed threshold for quadrant crosshair
+  const selfThreshold = 3.75;
+  const othersThreshold = 3.75;
 
   // Classify each point into a quadrant
   type QuadrantKey = "obvious_strengths" | "hidden_strengths" | "blind_spot" | "obvious_dev";
@@ -374,6 +374,7 @@ function buildHtml({
   .vr-reco-qa { margin-bottom: 8px; }
   .vr-reco-question { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: #64748b; margin-bottom: 3px; }
   .vr-reco-answer { font-size: 12px; color: #334155; padding: 4px 0 4px 12px; border-left: 2px solid #3b82f6; font-style: italic; }
+  .vr-reco-subtitle { font-size: 11px; color: #64748b; font-style: italic; margin-bottom: 8px; }
   .vr-no-data { color: #94a3b8; font-size: 12px; font-style: italic; }
   .vr-no-feedback { padding: 32px; text-align: center; color: #94a3b8; border: 1px dashed #e2e8f0; border-radius: 8px; margin-bottom: 32px; }
   .vr-radar-wrap { display: flex; justify-content: center; margin-bottom: 8px; }
@@ -530,18 +531,10 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
     `).join("")}
   </div>
 
-  <div class="vr-section">
-    <div class="vr-section-title">Топ-5 компетенций</div>
-    <div class="vr-top5-section">
-      ${renderTop5("Зоны для развития", data.top5Development, "dev")}
-      ${renderTop5("Сильные стороны", data.top5Strength, "str")}
-    </div>
-  </div>
-
   ${renderQuadrantSection(scatterData)}
 
   <div class="vr-section">
-    <div class="vr-section-title">Общие рекомендации</div>
+    <div class="vr-section-title">Обратная связь</div>
     ${data.openQuestionAnswers.length === 0
       ? '<div class="vr-no-data">Ответы на открытые вопросы не получены.</div>'
       : OPEN_QUESTIONS.map((q, qi) => {
@@ -549,8 +542,12 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
             .map((entry) => entry.answers[qi])
             .filter(Boolean);
           if (answers.length === 0) return "";
+          const subtitle = q.id === "other"
+            ? `<div class="vr-reco-subtitle">Здесь респонденты могут оставить персонализированную обратную связь в свободной форме</div>`
+            : "";
           return `<div class="vr-reco-respondent">
             <div class="vr-reco-name">${esc(q.heading)}</div>
+            ${subtitle}
             ${answers.map((answer) => `<div class="vr-reco-answer">«${esc(answer as string)}»</div>`).join("")}
           </div>`;
         }).join("")}
@@ -639,25 +636,25 @@ function renderGroupMatrix(
 const QUADRANT_CONFIG: Record<QuadrantKey, { title: string; desc: string; color: string; bg: string }> = {
   obvious_strengths: {
     title: "Очевидные сильные стороны",
-    desc: "В этой зоне перечислены компетенции, которыми Вы владеете. В этом уверены и Вы сами, и Ваши коллеги. Эти компетенции можно дальше совершенствовать.",
+    desc: "В этой зоне перечислены компетенции, которыми ты владеешь. В этом уверены и ты сам(а), и твои коллеги. Эти компетенции можно дальше совершенствовать.",
     color: "#16a34a",
     bg: "#dcfce7",
   },
   hidden_strengths: {
     title: "Не очевидные сильные стороны",
-    desc: "Эту часть условно можно назвать зоной «скромности»: это значит, что окружающие оценили данные компетенции выше, чем Вы сами. Развивать ли перечисленные компетенции — Ваш выбор, но коллеги уверены, что Вы ими уже вполне владеете.",
+    desc: "Эту часть условно можно назвать зоной «скромности»: это значит, что окружающие оценили данные компетенции выше, чем ты сам(а). Развивать ли перечисленные компетенции — твой выбор, но коллеги уверены, что ты ими уже вполне владеешь.",
     color: "#2563eb",
     bg: "#dbeafe",
   },
   blind_spot: {
     title: "Не очевидные потребности в развитии («Слепое пятно»)",
-    desc: "В этой зоне находятся компетенции, которые Вы сами высоко оцениваете, однако окружающие считают их зонами для развития. Стоит запросить дополнительную обратную связь по этим компетенциям.",
+    desc: "В этой зоне находятся компетенции, которые ты сам(а) высоко оцениваешь, однако окружающие считают их зонами для развития. Стоит запросить дополнительную обратную связь по этим компетенциям.",
     color: "#d97706",
     bg: "#fef3c7",
   },
   obvious_dev: {
     title: "Очевидные потребности в развитии",
-    desc: "Эта зона отражает компетенции, которые развиты у Вас недостаточно. Это считается как Вы сами, так и окружающие. Вам необходимо особо сосредоточиться на развитии данных компетенций.",
+    desc: "Эта зона отражает компетенции, которые развиты у тебя недостаточно. Это считаешь как ты сам(а), так и окружающие. Тебе необходимо особо сосредоточиться на развитии данных компетенций.",
     color: "#dc2626",
     bg: "#fee2e2",
   },
