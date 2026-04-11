@@ -14,6 +14,9 @@ import { competencyInputSchema } from "@/lib/validators/competency";
 import { respondentInputSchema } from "@/lib/validators/respondent";
 import { sendTelegramMessage } from "@/lib/telegram/client";
 import { env } from "@/lib/env";
+import type { RespondentRole } from "@prisma/client";
+
+const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
 
 
 function parseBehavioralMarkers(value: string): string[] {
@@ -311,4 +314,64 @@ export async function triggerAnalysisAction(formData: FormData) {
 
   revalidatePath(`/campaigns/${campaignId}/reports`);
   revalidatePath(`/campaigns/${campaignId}/responses`);
+}
+
+export async function updateRoleMessagesAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const campaignId = String(formData.get("campaignId") ?? "");
+
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, ownerAdminId: admin.id },
+    select: { id: true },
+  });
+
+  if (!campaign) {
+    redirect("/campaigns");
+  }
+
+  for (const role of ALL_ROLES) {
+    const greeting = String(formData.get(`greeting_${role}`) ?? "").trim() || null;
+    const closing = String(formData.get(`closing_${role}`) ?? "").trim() || null;
+
+    await prisma.campaignRoleMessage.upsert({
+      where: { campaignId_role: { campaignId, role } },
+      create: { campaignId, role, greetingMessage: greeting, closingMessage: closing },
+      update: { greetingMessage: greeting, closingMessage: closing },
+    });
+  }
+
+  revalidatePath(`/campaigns/${campaignId}/edit`);
+}
+
+export async function importRoleMessagesAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const campaignId = String(formData.get("campaignId") ?? "");
+  const sourceCampaignId = String(formData.get("sourceCampaignId") ?? "");
+
+  if (!sourceCampaignId || sourceCampaignId === campaignId) {
+    redirect(`/campaigns/${campaignId}/edit`);
+  }
+
+  const [target, source] = await Promise.all([
+    prisma.campaign.findFirst({ where: { id: campaignId, ownerAdminId: admin.id }, select: { id: true } }),
+    prisma.campaign.findFirst({ where: { id: sourceCampaignId, ownerAdminId: admin.id }, select: { id: true } }),
+  ]);
+
+  if (!target || !source) {
+    redirect("/campaigns");
+  }
+
+  const sourceMessages = await prisma.campaignRoleMessage.findMany({
+    where: { campaignId: sourceCampaignId },
+  });
+
+  for (const msg of sourceMessages) {
+    await prisma.campaignRoleMessage.upsert({
+      where: { campaignId_role: { campaignId, role: msg.role } },
+      create: { campaignId, role: msg.role, greetingMessage: msg.greetingMessage, closingMessage: msg.closingMessage },
+      update: { greetingMessage: msg.greetingMessage, closingMessage: msg.closingMessage },
+    });
+  }
+
+  revalidatePath(`/campaigns/${campaignId}/edit`);
 }

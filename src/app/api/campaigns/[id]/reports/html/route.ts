@@ -355,7 +355,7 @@ function buildHtml({
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; }
-  .vr-bg { max-width: 1040px; margin: 0 auto; background: #dbeafe; min-height: 100vh; }
+  .vr-bg { max-width: 1040px; margin: 0 auto; background: #eff6ff; min-height: 100vh; }
   .vr-page { max-width: 960px; margin: 0 auto; padding: 16px 24px 32px; }
   .vr-cover-logos { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; margin-bottom: 16px; }
   .vr-logo { display: block; height: 101px; width: auto; }

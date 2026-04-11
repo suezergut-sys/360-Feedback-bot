@@ -88,10 +88,13 @@ const INVITE_REQUIRED_TEXT =
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+type RoleMessageData = { greetingMessage: string | null; closingMessage: string | null };
+
 type ActiveCampaignContext = {
   campaign: Campaign;
   respondent: Respondent;
   competencies: Competency[];
+  roleMessage: RoleMessageData | null;
 };
 
 export type InboundMessage = {
@@ -211,8 +214,12 @@ async function loadContextByToken(token: string): Promise<ActiveCampaignContext 
   }
 
   const competencies = await getEnabledCompetencies(respondent.campaignId);
+  const roleMessage = await prisma.campaignRoleMessage.findUnique({
+    where: { campaignId_role: { campaignId: respondent.campaignId, role: respondent.role } },
+    select: { greetingMessage: true, closingMessage: true },
+  });
 
-  return { campaign: respondent.campaign, respondent, competencies };
+  return { campaign: respondent.campaign, respondent, competencies, roleMessage: roleMessage ?? null };
 }
 
 async function loadContextByTelegramUser(telegramUserId: bigint): Promise<ActiveCampaignContext | null> {
@@ -239,12 +246,20 @@ async function loadContextByTelegramUser(telegramUserId: bigint): Promise<Active
     });
     if (!completed) return null;
     const competencies = await getEnabledCompetencies(completed.campaignId);
-    return { campaign: completed.campaign, respondent: completed, competencies };
+    const roleMessage = await prisma.campaignRoleMessage.findUnique({
+      where: { campaignId_role: { campaignId: completed.campaignId, role: completed.role } },
+      select: { greetingMessage: true, closingMessage: true },
+    });
+    return { campaign: completed.campaign, respondent: completed, competencies, roleMessage: roleMessage ?? null };
   }
 
   const competencies = await getEnabledCompetencies(respondent.campaignId);
+  const roleMessage = await prisma.campaignRoleMessage.findUnique({
+    where: { campaignId_role: { campaignId: respondent.campaignId, role: respondent.role } },
+    select: { greetingMessage: true, closingMessage: true },
+  });
 
-  return { campaign: respondent.campaign, respondent, competencies };
+  return { campaign: respondent.campaign, respondent, competencies, roleMessage: roleMessage ?? null };
 }
 
 async function ensureSession(context: ActiveCampaignContext) {
@@ -359,6 +374,10 @@ async function finalizeInterview(context: ActiveCampaignContext, sessionId: stri
 
   await enqueueJob("generate_reports", { campaignId: context.campaign.id });
 
+  const closingFromDB = context.roleMessage?.closingMessage;
+  if (closingFromDB) {
+    return closingFromDB.replace(/<оцениваемый сотрудник>/g, context.campaign.subjectName);
+  }
   return context.campaign.closingMessage;
 }
 
@@ -576,23 +595,29 @@ async function sendConsentAndResetSession(
   });
 
   const isSelf = context.respondent.role === "self";
+  const greetingFromDB = context.roleMessage?.greetingMessage;
 
-  const consentMessage = isSelf
-    ? [
-        "Привет!",
-        "Оцени (по шкале от 1 до 5) насколько, по твоему мнению, проявляются компетенции в твоём поведении.",
-        "",
-        "Нажми кнопку «Начать» когда готов(а).",
-      ].join("\n")
-    : [
-        "Привет!",
-        "Спасибо за готовность пройти опрос.",
-        `Я помогу собрать обратную связь на ${context.campaign.subjectName}.`,
-        "Сначала мы пройдем по оценке 10 компетенций, а в конце я задам открытые вопросы, на которые ты можешь отвечать как текстовыми, так и голосовыми сообщениями (как тебе удобнее).",
-        "Твои ответы останутся анонимными, я не сохраняю твои данные, только сами ответы.",
-        "",
-        "Если готов(а) начинать, нажми на кнопку.",
-      ].join("\n");
+  let consentMessage: string;
+  if (greetingFromDB) {
+    consentMessage = greetingFromDB.replace(/<оцениваемый сотрудник>/g, context.campaign.subjectName);
+  } else if (isSelf) {
+    consentMessage = [
+      "Привет!",
+      "Оцени (по шкале от 1 до 5) насколько, по твоему мнению, проявляются компетенции в твоём поведении.",
+      "",
+      "Нажми кнопку «Начать» когда готов(а).",
+    ].join("\n");
+  } else {
+    consentMessage = [
+      "Привет!",
+      "Спасибо за готовность пройти опрос.",
+      `Я помогу собрать обратную связь на ${context.campaign.subjectName}.`,
+      "Сначала мы пройдем по оценке 10 компетенций, а в конце я задам открытые вопросы, на которые ты можешь отвечать как текстовыми, так и голосовыми сообщениями (как тебе удобнее).",
+      "Твои ответы останутся анонимными, я не сохраняю твои данные, только сами ответы.",
+      "",
+      "Если готов(а) начинать, нажми на кнопку.",
+    ].join("\n");
+  }
 
   await saveMessage({
     sessionId: session.id,

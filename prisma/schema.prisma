@@ -87,6 +87,7 @@ model Campaign {
   feedback       CompetencyFeedback[]
   reports        AnalysisReport[]
   ratings        CompetencyRating[]
+  roleMessages   CampaignRoleMessage[]
 
   @@index([ownerAdminId])
   @@index([status])
@@ -259,6 +260,21 @@ model CompetencyTemplate {
 
   @@index([priorityOrder])
   @@map("competency_templates")
+}
+
+model CampaignRoleMessage {
+  id              String         @id @default(cuid())
+  campaignId      String         @map("campaign_id")
+  role            RespondentRole
+  greetingMessage String?        @map("greeting_message")
+  closingMessage  String?        @map("closing_message")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  campaign        Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, role])
+  @@map("campaign_role_messages")
 }
 
 model CompetencyRating {

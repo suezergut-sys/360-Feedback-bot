@@ -9,8 +9,7 @@ const TABS = [
   { slug: "competencies", label: "Компетенции" },
   { slug: "respondents", label: "Респонденты" },
   { slug: "progress", label: "Прогресс" },
-  { slug: "responses", label: "Ответы" },
-  { slug: "reports", label: "Отчеты" },
+{ slug: "reports", label: "Отчеты" },
 ];
 
 export function CampaignTabs({ campaignId }: Props) {
