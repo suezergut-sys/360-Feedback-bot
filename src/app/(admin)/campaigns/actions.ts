@@ -12,8 +12,6 @@ import { logger } from "@/lib/logging/logger";
 import { campaignInputSchema } from "@/lib/validators/campaign";
 import { competencyInputSchema } from "@/lib/validators/competency";
 import { respondentInputSchema } from "@/lib/validators/respondent";
-import { sendTelegramMessage } from "@/lib/telegram/client";
-import { env } from "@/lib/env";
 import type { RespondentRole } from "@prisma/client";
 
 const ALL_ROLES: RespondentRole[] = ["self", "manager", "colleague", "client", "employee"];
@@ -91,40 +89,9 @@ export async function updateCampaignAction(formData: FormData) {
     },
   });
 
-  // Send Telegram notification to self-assessment respondent when campaign completes
+  // When campaign completes: enqueue AI analysis job (which sends Telegram notification when done)
   if (isCompletingNow) {
-    const token = publicReportToken ?? previousCampaign?.publicReportToken;
-    if (token) {
-      try {
-        const appUrl = env.APP_BASE_URL || process.env.VERCEL_URL || "";
-        const reportUrl = appUrl
-          ? `${appUrl.startsWith("http") ? appUrl : `https://${appUrl}`}/api/reports/${token}`
-          : null;
-
-        if (reportUrl) {
-          const selfRespondent = await prisma.respondent.findFirst({
-            where: { campaignId, role: "self", telegramUserId: { not: null } },
-            select: { telegramUserId: true },
-          });
-
-          if (selfRespondent?.telegramUserId) {
-            const campaignTitle = previousCampaign?.title ?? parsed.data.title;
-            const message = [
-              "Привет!",
-              `Завершился опрос «${campaignTitle}».`,
-              `По <a href="${reportUrl}">ссылке</a> ты можешь посмотреть его результаты.`,
-            ].join("\n");
-
-            await sendTelegramMessage(selfRespondent.telegramUserId.toString(), message, "HTML");
-          }
-        }
-      } catch (err) {
-        logger.warn("Failed to send completion notification to self respondent", {
-          campaignId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    await enqueueJob("generate_ai_analysis", { campaignId });
   }
 
   revalidatePath(`/campaigns/${campaignId}/edit`);

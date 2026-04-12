@@ -76,8 +76,9 @@ model Campaign {
   language       String             @default("ru")
   welcomeMessage    String             @map("welcome_message")
   closingMessage    String             @map("closing_message")
-  publicReportToken String?            @unique @map("public_report_token")
-  createdAt         DateTime           @default(now()) @map("created_at")
+  publicReportToken  String?            @unique @map("public_report_token")
+  aiAnalysisMarkdown String?           @map("ai_analysis_markdown")
+  createdAt          DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime           @updatedAt @map("updated_at")
 
   owner          Admin              @relation(fields: [ownerAdminId], references: [id], onDelete: Cascade)

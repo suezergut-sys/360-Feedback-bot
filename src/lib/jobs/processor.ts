@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { acquireSoftLock, releaseSoftLock } from "@/lib/kv/locks";
 import { fetchDuePendingJobs } from "@/lib/jobs/queue";
 import { logger } from "@/lib/logging/logger";
-import { generateReportsForCampaign, runExtractionForRespondent } from "@/modules/reports/service";
+import { generateReportsForCampaign, runExtractionForRespondent, generateAndSaveAiAnalysis } from "@/modules/reports/service";
+import { sendTelegramMessage } from "@/lib/telegram/client";
+import { env } from "@/lib/env";
 
 const MAX_ATTEMPTS = 5;
 
@@ -95,6 +97,55 @@ async function processSingleJob(job: Job): Promise<void> {
       await generateReportsForCampaign(campaignId);
     } finally {
       await releaseSoftLock(lockKey);
+    }
+
+    return;
+  }
+
+  if (job.type === "generate_ai_analysis") {
+    const campaignId = String(payload.campaignId ?? "");
+
+    if (!campaignId) {
+      throw new Error("generate_ai_analysis payload is invalid");
+    }
+
+    await generateAndSaveAiAnalysis(campaignId);
+
+    // Send Telegram notification to self-respondent now that analysis is ready
+    try {
+      const campaign = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { title: true, publicReportToken: true },
+      });
+
+      if (campaign?.publicReportToken) {
+        const appUrl = env.APP_BASE_URL || process.env.VERCEL_URL || "";
+        const reportUrl = appUrl
+          ? `${appUrl.startsWith("http") ? appUrl : `https://${appUrl}`}/api/reports/${campaign.publicReportToken}`
+          : null;
+
+        if (reportUrl) {
+          const selfRespondent = await prisma.respondent.findFirst({
+            where: { campaignId, role: "self", telegramUserId: { not: null } },
+            select: { telegramUserId: true },
+          });
+
+          if (selfRespondent?.telegramUserId) {
+            const message = [
+              "Привет!",
+              `Завершился опрос «${campaign.title}».`,
+              `По <a href="${reportUrl}">ссылке</a> ты можешь посмотреть его результаты.`,
+            ].join("\n");
+
+            await sendTelegramMessage(selfRespondent.telegramUserId.toString(), message, "HTML");
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn("Failed to send completion notification after AI analysis", {
+        campaignId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     return;

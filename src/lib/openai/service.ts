@@ -157,6 +157,28 @@ export async function generateCompetencyReport(params: {
   };
 }
 
+export async function generateAiAnalysis(params: {
+  systemPrompt: string;
+  userPrompt: string;
+}): Promise<string> {
+  const client = getOpenAiClient();
+
+  const response = await withOpenAiRetry(() =>
+    client.chat.completions.create({
+      model: OPENAI_MODELS.report,
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: params.systemPrompt },
+        { role: "user", content: params.userPrompt },
+      ],
+    }),
+  );
+
+  const text = response.choices[0]?.message?.content;
+  if (!text) throw new Error("Empty AI analysis response");
+  return text;
+}
+
 export async function generateOverallReport(params: {
   systemPrompt: string;
   userPrompt: string;

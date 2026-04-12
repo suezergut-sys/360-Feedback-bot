@@ -2,7 +2,7 @@ import { JobStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 
-export type JobType = "extract_feedback" | "generate_reports";
+export type JobType = "extract_feedback" | "generate_reports" | "generate_ai_analysis";
 
 export async function enqueueJob(type: JobType, payload: Record<string, unknown>, runAt?: Date) {
   return prisma.job.create({

@@ -4,6 +4,7 @@ import {
   extractCompetencyFeedback,
   generateCompetencyReport,
   generateOverallReport,
+  generateAiAnalysis,
 } from "@/lib/openai/service";
 import { logger } from "@/lib/logging/logger";
 import {
@@ -300,6 +301,121 @@ export async function generateReportsForCampaign(campaignId: string): Promise<vo
     competenciesProcessed: aggregates.length,
     overallVersion,
   });
+}
+
+const ROLE_LABELS_AI: Record<string, string> = {
+  self: "Самооценка",
+  manager: "Руководитель",
+  colleague: "Коллеги",
+  client: "Клиенты",
+  employee: "Сотрудники",
+};
+
+const ALL_ROLES_AI = ["self", "manager", "colleague", "client", "employee"] as const;
+
+const AI_ANALYSIS_SYSTEM_PROMPT = [
+  "Ты эксперт в области управления персоналом и развития компетенций.",
+  "Твоя задача — проанализировать результаты оценки 360° и сформировать практические рекомендации.",
+  "Пиши на русском языке, профессионально и конкретно.",
+  "Структурируй ответ строго по трём разделам — используй заголовки ### ...",
+  "Не добавляй вступление и заключение за пределами трёх разделов.",
+].join("\n");
+
+const AI_ANALYSIS_FALLBACK = [
+  "### На что обратить внимание",
+  "Недостаточно данных для формирования автоматического анализа.",
+  "",
+  "### Что требует уточнений и прояснений",
+  "Рекомендуется провести индивидуальные встречи с ключевыми участниками опроса.",
+  "",
+  "### Компетенции к развитию",
+  "Требуется дополнительный сбор данных для формирования рекомендаций.",
+].join("\n");
+
+export async function generateAndSaveAiAnalysis(campaignId: string): Promise<void> {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    include: {
+      competencies: { where: { enabled: true }, orderBy: { priorityOrder: "asc" } },
+      respondents: { select: { id: true, role: true } },
+    },
+  });
+
+  if (!campaign) return;
+
+  const [ratings, openMessages] = await Promise.all([
+    prisma.competencyRating.findMany({
+      where: { campaignId },
+      select: { respondentId: true, competencyId: true, rating: true },
+    }),
+    prisma.message.findMany({
+      where: { session: { campaignId }, senderType: "respondent", competencyId: null },
+      select: { transcriptText: true, rawText: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  const respondentById = new Map(campaign.respondents.map((r) => [r.id, r]));
+
+  const ratingsTable = campaign.competencies
+    .map((comp) => {
+      const compRatings = ratings.filter((r) => r.competencyId === comp.id && r.rating !== null);
+      const byRole = ALL_ROLES_AI.map((role) => {
+        const vals = compRatings
+          .filter((r) => respondentById.get(r.respondentId)?.role === role)
+          .map((r) => r.rating as number);
+        if (vals.length === 0) return null;
+        const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+        return `${ROLE_LABELS_AI[role]}: ${avg}`;
+      }).filter(Boolean);
+      return `${comp.name}: ${byRole.length > 0 ? byRole.join(", ") : "нет данных"}`;
+    })
+    .join("\n");
+
+  const openTexts = openMessages
+    .map((m) => (m.transcriptText ?? m.rawText ?? "").trim())
+    .filter(Boolean)
+    .join("\n---\n");
+
+  const userPrompt = [
+    `Оцениваемый: ${campaign.subjectName}`,
+    `Наименование опроса: ${campaign.title}`,
+    "",
+    "## Средние оценки по компетенциям (по группам респондентов, шкала 1–5):",
+    ratingsTable || "Данные по оценкам отсутствуют.",
+    "",
+    "## Ответы на открытые вопросы:",
+    openTexts || "Открытые ответы отсутствуют.",
+    "",
+    "Сформируй анализ строго по трём разделам:",
+    "### На что обратить внимание",
+    "(выдели ключевые сигналы — расхождения в оценках разных групп, низкие оценки, повторяющиеся темы в открытых ответах)",
+    "### Что требует уточнений и прояснений",
+    "(укажи аспекты, требующие дополнительного изучения, и конкретные инструменты: встречи 1-on-1, наблюдение, дополнительный опрос, коучинг и т.д.)",
+    "### Компетенции к развитию",
+    "(перечисли компетенции с наибольшим приоритетом развития, с кратким обоснованием по данным опроса)",
+  ].join("\n");
+
+  let analysisText: string;
+  try {
+    analysisText = await generateAiAnalysis({
+      systemPrompt: AI_ANALYSIS_SYSTEM_PROMPT,
+      userPrompt,
+    });
+  } catch (error) {
+    logger.warn("AI analysis generation failed, using fallback", {
+      campaignId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    analysisText = AI_ANALYSIS_FALLBACK;
+  }
+
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: { aiAnalysisMarkdown: analysisText },
+  });
+
+  logger.info("AI analysis saved", { campaignId });
 }
 
 export async function listReportsForCampaign(campaignId: string) {

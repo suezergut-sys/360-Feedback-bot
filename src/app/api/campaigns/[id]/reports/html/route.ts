@@ -37,13 +37,13 @@ export async function GET(
 
   const { id } = await params;
 
-  let campaign: { id: string; title: string; subjectName: string; updatedAt: Date } | null = null;
+  let campaign: { id: string; title: string; subjectName: string; updatedAt: Date; aiAnalysisMarkdown: string | null } | null = null;
 
   if (publicToken) {
     // Public access via token — no session required
     campaign = await prisma.campaign.findFirst({
       where: { id, publicReportToken: publicToken },
-      select: { id: true, title: true, subjectName: true, updatedAt: true },
+      select: { id: true, title: true, subjectName: true, updatedAt: true, aiAnalysisMarkdown: true },
     });
   } else {
     // Admin access via session cookie
@@ -60,7 +60,7 @@ export async function GET(
     }
     campaign = await prisma.campaign.findFirst({
       where: { id, ownerAdminId: admin.id },
-      select: { id: true, title: true, subjectName: true, updatedAt: true },
+      select: { id: true, title: true, subjectName: true, updatedAt: true, aiAnalysisMarkdown: true },
     });
   }
 
@@ -238,6 +238,7 @@ export async function GET(
     scatterData,
     logoDataUrl,
     logoRightDataUrl,
+    aiAnalysisMarkdown: campaign.aiAnalysisMarkdown,
   });
 
   const filename = `report-${campaign.subjectName.replace(/[^a-zA-Zа-яА-Я0-9]/g, "_")}.html`;
@@ -299,6 +300,7 @@ function buildHtml({
   scatterData,
   logoDataUrl,
   logoRightDataUrl,
+  aiAnalysisMarkdown,
 }: {
   campaign: { title: string; subjectName: string; updatedAt: Date };
   data: ReturnType<typeof buildVisualReportData>;
@@ -313,6 +315,7 @@ function buildHtml({
   scatterData: ScatterData;
   logoDataUrl: string;
   logoRightDataUrl: string;
+  aiAnalysisMarkdown: string | null | undefined;
 }): string {
   const dateStr = campaign.updatedAt.toLocaleDateString("ru-RU");
 
@@ -443,6 +446,11 @@ function buildHtml({
   .vr-qs-name { color: #1e293b; line-height: 1.4; }
   .vr-qs-empty { font-size: 11px; color: #94a3b8; font-style: italic; }
   .vr-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+  .vr-ai-h3 { font-size: 13px; font-weight: 700; color: #1e293b; margin: 16px 0 8px; padding-left: 8px; border-left: 3px solid #3b82f6; }
+  .vr-ai-list { margin: 0 0 10px 20px; padding: 0; }
+  .vr-ai-list li { font-size: 12px; color: #334155; margin-bottom: 5px; line-height: 1.55; }
+  .vr-ai-p { font-size: 12px; color: #334155; margin-bottom: 8px; line-height: 1.6; }
+  .vr-ai-disclaimer { margin-top: 20px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px; color: #64748b; font-style: italic; }
   @media (max-width: 640px) {
     .vr-page { padding: 10px 10px 24px; }
     .vr-page::before { left: 3px; }
@@ -627,6 +635,14 @@ ${printMode ? `<script>window.addEventListener("load", function(){ window.print(
         }).join("")}
   </div>
   `}
+
+  ${aiAnalysisMarkdown ? `
+  <div class="vr-section">
+    <div class="vr-section-title">Анализ оценки 360°</div>
+    ${renderAnalysisMarkdown(aiAnalysisMarkdown)}
+    <div class="vr-ai-disclaimer">Анализ и рекомендации сформированы искусственным интеллектом.</div>
+  </div>
+  ` : ""}
 
   <div class="vr-footer">
     Разработка и проведение оценки 360° : Корпоративный Университет ГК «КОРУС Консалтинг» 2026
@@ -906,6 +922,33 @@ function renderQuadrantSection(scatterData: ScatterData): string {
     </div>
     `}
   </div>`;
+}
+
+function renderAnalysisMarkdown(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let inList = false;
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line.startsWith("### ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<div class="vr-ai-h3">${esc(line.slice(4))}</div>`);
+    } else if (line.startsWith("## ")) {
+      if (inList) { out.push("</ul>"); inList = false; }
+    } else if (line.startsWith("- ") || line.startsWith("* ")) {
+      if (!inList) { out.push(`<ul class="vr-ai-list">`); inList = true; }
+      out.push(`<li>${esc(line.slice(2))}</li>`);
+    } else if (line.trim() === "") {
+      if (inList) { out.push("</ul>"); inList = false; }
+    } else {
+      if (inList) { out.push("</ul>"); inList = false; }
+      out.push(`<p class="vr-ai-p">${esc(line)}</p>`);
+    }
+  }
+
+  if (inList) out.push("</ul>");
+  return out.join("\n");
 }
 
 function renderTop5(title: string, items: { name: string; count: number }[], type: "dev" | "str"): string {
