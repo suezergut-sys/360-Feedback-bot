@@ -89,9 +89,17 @@ export async function updateCampaignAction(formData: FormData) {
     },
   });
 
-  // When campaign completes: enqueue AI analysis job (which sends Telegram notification when done)
+  // When campaign completes: enqueue AI analysis job and process immediately
   if (isCompletingNow) {
     await enqueueJob("generate_ai_analysis", { campaignId });
+    try {
+      await processDueJobs(3);
+    } catch (error) {
+      logger.warn("AI analysis job enqueued but immediate processing failed", {
+        campaignId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   revalidatePath(`/campaigns/${campaignId}/edit`);
@@ -270,8 +278,12 @@ export async function triggerAnalysisAction(formData: FormData) {
     campaignId,
   });
 
+  await enqueueJob("generate_ai_analysis", {
+    campaignId,
+  });
+
   try {
-    await processDueJobs(Math.max(10, sessionsWithResponses.length + 3));
+    await processDueJobs(Math.max(10, sessionsWithResponses.length + 5));
   } catch (error) {
     logger.warn("Manual report trigger queued jobs but immediate processing failed", {
       campaignId,
