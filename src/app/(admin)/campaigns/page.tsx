@@ -3,6 +3,40 @@ import { listCampaigns } from "@/modules/campaigns/service";
 import { requireAdminSession } from "@/lib/auth/admin";
 import { StatusBadge } from "@/components/status-badge";
 import { DeleteCampaignButton } from "@/components/delete-campaign-button";
+import type { RespondentRole } from "@prisma/client";
+
+type RoleCol = { label: string; role: RespondentRole };
+
+const ROLE_COLS: RoleCol[] = [
+  { label: "ОЦ", role: "self" },
+  { label: "РУ", role: "manager" },
+  { label: "КО", role: "colleague" },
+  { label: "СО", role: "employee" },
+  { label: "КЛ", role: "client" },
+];
+
+function roleStats(respondents: { role: RespondentRole; status: string }[], role: RespondentRole) {
+  const group = respondents.filter((r) => r.role === role);
+  const total = group.length;
+  const completed = group.filter((r) => r.status === "completed").length;
+  return { completed, total };
+}
+
+function RoleCell({ completed, total }: { completed: number; total: number }) {
+  let color: string;
+  if (total === 0) {
+    color = "#ef4444"; // red
+  } else if (completed === total) {
+    color = "#16a34a"; // green
+  } else {
+    color = "#ca8a04"; // yellow/amber
+  }
+  return (
+    <span style={{ color, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+      {completed}/{total}
+    </span>
+  );
+}
 
 export default async function CampaignsPage() {
   const admin = await requireAdminSession();
@@ -27,7 +61,11 @@ export default async function CampaignsPage() {
                 <th>Название</th>
                 <th>Оцениваемый</th>
                 <th>Статус</th>
-                <th>Респонденты</th>
+                {ROLE_COLS.map((c) => (
+                  <th key={c.role} title={c.role} style={{ textAlign: "center" }}>
+                    {c.label}
+                  </th>
+                ))}
                 <th>Действия</th>
               </tr>
             </thead>
@@ -39,7 +77,14 @@ export default async function CampaignsPage() {
                   <td>
                     <StatusBadge status={campaign.status} />
                   </td>
-                  <td>{campaign._count.respondents}</td>
+                  {ROLE_COLS.map((c) => {
+                    const { completed, total } = roleStats(campaign.respondents, c.role);
+                    return (
+                      <td key={c.role} style={{ textAlign: "center" }}>
+                        <RoleCell completed={completed} total={total} />
+                      </td>
+                    );
+                  })}
                   <td className="row-gap">
                     <Link href={`/campaigns/${campaign.id}/edit`} className="link-inline">
                       Открыть

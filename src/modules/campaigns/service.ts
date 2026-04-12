@@ -13,11 +13,8 @@ export async function listCampaigns(ownerAdminId: string) {
     where: { ownerAdminId },
     orderBy: { createdAt: "desc" },
     include: {
-      _count: {
-        select: {
-          respondents: true,
-          sessions: true,
-        },
+      respondents: {
+        select: { role: true, status: true },
       },
     },
   });
