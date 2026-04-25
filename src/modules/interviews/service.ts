@@ -262,6 +262,35 @@ async function loadContextByTelegramUser(telegramUserId: bigint): Promise<Active
   return { campaign: respondent.campaign, respondent, competencies, roleMessage: roleMessage ?? null };
 }
 
+async function findBlockingUnfinishedContext(
+  telegramUserId: bigint,
+  nextRespondentId: string,
+): Promise<ActiveCampaignContext | null> {
+  const respondent = await prisma.respondent.findFirst({
+    where: {
+      telegramUserId,
+      id: { not: nextRespondentId },
+      status: { not: RespondentStatus.completed },
+      campaign: { status: CampaignStatus.active },
+      sessions: { none: { completedAt: { not: null } } },
+    },
+    include: { campaign: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!respondent) {
+    return null;
+  }
+
+  const competencies = await getEnabledCompetencies(respondent.campaignId);
+  const roleMessage = await prisma.campaignRoleMessage.findUnique({
+    where: { campaignId_role: { campaignId: respondent.campaignId, role: respondent.role } },
+    select: { greetingMessage: true, closingMessage: true },
+  });
+
+  return { campaign: respondent.campaign, respondent, competencies, roleMessage: roleMessage ?? null };
+}
+
 async function ensureSession(context: ActiveCampaignContext) {
   const firstCompetency = context.competencies[0];
 
@@ -560,6 +589,21 @@ export async function handleStartCommand(params: {
     return { text: "Этот инвайт уже привязан к другому аккаунту Telegram. Обратитесь к администратору." };
   }
 
+  const blockingContext = await findBlockingUnfinishedContext(params.telegramUserId, context.respondent.id);
+
+  if (blockingContext) {
+    const resumeReply = await buildResumeReply(blockingContext, params.chatId);
+    return {
+      text: [
+        `Ты сейчас не можешь подключиться к новой кампании оценки, потому что ты не завершил(а) кампанию по оценке ${blockingContext.campaign.subjectName}.`,
+        "Давай продолжим, после чего ты сможешь начать оценку следующего коллеги.",
+        "",
+        resumeReply.text,
+      ].join("\n"),
+      keyboard: resumeReply.keyboard,
+    };
+  }
+
   if (!context.respondent.telegramUserId) {
     await prisma.respondent.update({
       where: { id: context.respondent.id },
@@ -638,13 +682,7 @@ async function sendConsentAndResetSession(
   return { text: consentMessage, keyboard: CONSENT_KEYBOARD };
 }
 
-export async function handleResumeCommand(telegramUserId: bigint, chatId: number): Promise<BotReply> {
-  const context = await loadContextByTelegramUser(telegramUserId);
-
-  if (!context) {
-    return { text: INVITE_REQUIRED_TEXT };
-  }
-
+async function buildResumeReply(context: ActiveCampaignContext, chatId: number): Promise<BotReply> {
   const session = await ensureSession(context);
   const state = parseInterviewState(session.currentState);
 
@@ -694,6 +732,16 @@ export async function handleResumeCommand(telegramUserId: bigint, chatId: number
   });
 
   return { text: resumeQuestion };
+}
+
+export async function handleResumeCommand(telegramUserId: bigint, chatId: number): Promise<BotReply> {
+  const context = await loadContextByTelegramUser(telegramUserId);
+
+  if (!context) {
+    return { text: INVITE_REQUIRED_TEXT };
+  }
+
+  return buildResumeReply(context, chatId);
 }
 
 export async function handleFinishCommand(telegramUserId: bigint): Promise<BotReply> {
