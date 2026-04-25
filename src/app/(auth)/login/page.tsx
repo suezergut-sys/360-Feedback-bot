@@ -30,7 +30,7 @@ export default async function LoginPage({
           <label className="form-label" htmlFor="email">
             Email
           </label>
-          <input id="email" name="email" type="email" required className="input" />
+          <input id="email" name="email" type="text" required className="input" />
 
           <label className="form-label" htmlFor="password">
             Пароль

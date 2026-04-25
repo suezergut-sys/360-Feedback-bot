@@ -11,6 +11,15 @@ export async function GET(
 
   const { id } = await params;
 
+  const campaign = await prisma.campaign.findFirst({
+    where: { id, ownerAdminId: session.adminId },
+    select: { id: true },
+  });
+
+  if (!campaign) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   const report = await prisma.analysisReport.findFirst({
     where: { campaignId: id },
     orderBy: { createdAt: "desc" },
