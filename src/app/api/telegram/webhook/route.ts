@@ -91,6 +91,10 @@ export async function POST(request: Request) {
         messageId,
       });
 
+      if (result.persistentReply) {
+        await sendReply(chatId, result.persistentReply);
+      }
+
       if (result.reply) {
         await sendReply(chatId, result.reply);
       }

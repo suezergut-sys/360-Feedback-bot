@@ -45,6 +45,13 @@ export type BotReply = {
   keyboard?: InlineKeyboard;
 };
 
+type RatingCallbackResult = {
+  editText: string;
+  deleteMessageId?: number;
+  persistentReply?: BotReply | null;
+  reply: BotReply | null;
+};
+
 // ── Keyboards ──────────────────────────────────────────────────────────────
 
 const CONSENT_KEYBOARD: InlineKeyboard = {
@@ -120,27 +127,14 @@ function buildRatingMessage(
   const totalSteps = isSelf ? totalCompetencies : totalCompetencies + OPEN_QUESTIONS.length;
   const parts: string[] = [];
 
-  if (isFirst) {
-    if (isSelf) {
-      parts.push(
-        "Шкала оценки:",
-        RATING_SCALE_HINT,
-        "",
-        "──────────────────────",
-        "",
-      );
-    } else {
-      parts.push(
-        "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с тобой.",
-        "Опирайтесь на реальные наблюдения за последние 3–6 месяцев.",
-        "",
-        "Шкала оценки:",
-        RATING_SCALE_HINT,
-        "",
-        "──────────────────────",
-        "",
-      );
-    }
+  if (isFirst && !isSelf) {
+    parts.push(
+      "Оцените, насколько данный руководитель демонстрирует описанное поведение в рабочем взаимодействии с тобой.",
+      "Опирайтесь на реальные наблюдения за последние 3–6 месяцев.",
+      "",
+      "──────────────────────",
+      "",
+    );
   }
 
   parts.push(`Шаг: ${index + 1}/${totalSteps}`);
@@ -154,6 +148,14 @@ function buildRatingMessage(
   parts.push("", competency.description, "", "Насколько часто проявляется данное поведение?");
 
   return parts.join("\n");
+}
+
+function buildPersistentRatingScaleMessage(subjectName: string): string {
+  return [
+    `Оцениваемый: ${subjectName}`,
+    "Шкала оценки:",
+    RATING_SCALE_HINT,
+  ].join("\n");
 }
 
 function buildOpenQuestionMessage(
@@ -417,7 +419,7 @@ export async function handleRatingCallback(params: {
   chatId: number;
   callbackData: string;
   messageId?: number;
-}): Promise<{ editText: string; deleteMessageId?: number; reply: BotReply | null }> {
+}): Promise<RatingCallbackResult> {
   const [prefix, valueStr] = params.callbackData.split(":");
 
   if (!prefix) {
@@ -453,6 +455,7 @@ export async function handleRatingCallback(params: {
     await setSessionState({ sessionId: session.id, state: ratingState, currentCompetencyId: firstCompetency.id });
 
     const ratingMessage = buildRatingMessage(firstCompetency, 0, context.competencies.length, true, isSelf);
+    const ratingScaleMessage = buildPersistentRatingScaleMessage(context.campaign.subjectName);
 
     await buildAndStoreAssistantQuestion({
       sessionId: session.id,
@@ -461,13 +464,25 @@ export async function handleRatingCallback(params: {
       text: ratingMessage,
     });
 
+    await buildAndStoreAssistantQuestion({
+      sessionId: session.id,
+      competencyId: null,
+      telegramChatId: params.chatId,
+      text: ratingScaleMessage,
+    });
+
     logger.info("Consent given via button, starting rating phase", {
       sessionId: session.id,
       respondentId: context.respondent.id,
     });
 
     // Delete the consent message (it has the "Начать" button) after starting
-    return { editText: "", deleteMessageId: params.messageId, reply: { text: ratingMessage, keyboard: RATING_KEYBOARD } };
+    return {
+      editText: "",
+      deleteMessageId: params.messageId,
+      persistentReply: { text: ratingScaleMessage },
+      reply: { text: ratingMessage, keyboard: RATING_KEYBOARD },
+    };
   }
 
   // ── Rating button ──────────────────────────────────────────────────────
